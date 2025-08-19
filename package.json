@@ -1,0 +1,33 @@
+{
+  "name": "chat-app",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "pnpm -C packages/shared build && pnpm -F api build && pnpm -F web build",
+    "lint": "pnpm -r lint",
+    "format": "prettier --write .",
+    "db:migrate": "pnpm --filter api prisma migrate dev",
+    "start": "docker compose up --build"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.14.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "eslint": "^9.33.0",
+    "eslint-config-next": "15.4.6",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "prettier": "^3.6.2",
+    "tsx": "^4.20.4",
+    "turbo": "^2.5.5",
+    "typescript": "^5.9.2"
+  }
+}

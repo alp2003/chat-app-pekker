@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String     @id @default(uuid())
+  username      String     @unique      // 👈 login identifier
+  displayName   String?
+  avatar        String?
+  passwordHash  String      // 👈 store only hash
+  messages      Message[]
+  memberships   Membership[]
+  sessions      Session[]
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model Session {
+  id                String   @id @default(uuid())
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId            String
+  refreshTokenHash  String   // 👈 never store plaintext
+  userAgent         String?
+  ip                String?
+  createdAt         DateTime @default(now())
+  expiresAt         DateTime
+  revokedAt         DateTime?
+
+  @@index([userId, expiresAt])
+}
+
+model Room {
+  id        String     @id @default(uuid())
+  name      String?
+  isGroup   Boolean    @default(false)
+  messages  Message[]
+  members   Membership[]
+  createdAt DateTime   @default(now())
+}
+
+model Membership {
+  id      String @id @default(uuid())
+  user    User   @relation(fields: [userId], references: [id])
+  userId  String
+  room    Room   @relation(fields: [roomId], references: [id])
+  roomId  String
+  role    String @default("member")
+  @@unique([userId, roomId])
+}
+
+model Message {
+  id          String   @id @default(uuid())
+  room        Room     @relation(fields: [roomId], references: [id])
+  roomId      String
+  sender      User     @relation(fields: [senderId], references: [id])
+  senderId    String
+  content     String
+  clientMsgId String?
+
+  // self-relation thread
+  replyTo     Message?  @relation("ReplyThread", fields: [replyToId], references: [id])
+  replyToId   String?
+  replies     Message[] @relation("ReplyThread")
+
+  createdAt   DateTime @default(now())
+
+  @@index([roomId, createdAt])
+  @@unique([roomId, clientMsgId])
+}

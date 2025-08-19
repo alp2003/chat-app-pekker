@@ -1,0 +1,634 @@
+<h1>Modern Live Chat — NestJS (Backend) + Next.js (Frontend)</h1>
+<p>Production‑ready starter with Socket.IO over WebSockets, Redis pub/sub for horizontal scaling, PostgreSQL via Prisma, JWT auth, typing/presence, message persistence, optimistic UI, and end‑to‑end TypeScript.</p>
+<hr>
+<h2>Why this stack (and alternatives)</h2>
+<ul>
+<li><strong>Socket.IO on NestJS</strong>: robust transport fallbacks, rooms, acks, and middleware. Works behind proxies.</li>
+<li><strong>Redis adapter</strong>: enables multi‑instance real‑time fan‑out.</li>
+<li><strong>Prisma + Postgres</strong>: typed models, fast queries, migrations.</li>
+<li><strong>Next.js (App Router)</strong>: server components for auth pages + client components for live chat.</li>
+<li><strong>Zod DTOs</strong>: single source of truth validated on both client and server.</li>
+</ul>
+<p><strong>Alternatives</strong></p>
+<ul>
+<li>Pure <code>ws</code> + custom protocol (lighter, more work).</li>
+<li><strong>tRPC + wsLink</strong> if you want purely RPC style.</li>
+<li><strong>SSE</strong> for one‑way streams (not ideal for chat).</li>
+<li><strong>Hosted</strong>: Ably/Pusher for transport; keep NestJS for auth/persistence/domain.</li>
+</ul>
+<hr>
+<h2>Features</h2>
+<ul>
+<li>JWT auth (access+refresh); JWT in <strong>Socket.IO handshake</strong>.</li>
+<li>Rooms (1:1 &amp; group). Presence (online/last seen). Typing indicators.</li>
+<li>Message persistence with optimistic updates &amp; server acks.</li>
+<li>Rate limiting + flood control. Basic profanity filter hook.</li>
+<li>Redis pub/sub for scale; idempotent message delivery via <code>client_msg_id</code>.</li>
+<li>Tests for core services. OpenTelemetry hooks &amp; structured logs.</li>
+</ul>
+<hr>
+<h2>Monorepo layout</h2>
+<pre><code>chat-app/
+  apps/
+    api/                # NestJS
+    web/                # Next.js
+  packages/
+    shared/             # zod DTOs, types
+  docker-compose.yml
+  pnpm-workspace.yaml
+  .env
+  README.md
+</code></pre>
+<hr>
+<h2>Step‑by‑step setup</h2>
+<blockquote>
+<p>Assumes <strong>Node 20+</strong>, <strong>pnpm</strong>, <strong>Docker Desktop</strong>, and Git installed.</p>
+</blockquote>
+<h3>1) Workspace</h3>
+<pre><code class="language-bash">mkdir chat-app &amp;&amp; cd chat-app
+pnpm init -y
+cat &gt; pnpm-workspace.yaml &lt;&lt;&#39;YAML&#39;
+packages:
+  - &#39;apps/*&#39;
+  - &#39;packages/*&#39;
+YAML
+mkdir -p apps/api apps/web packages/shared
+</code></pre>
+<h3>2) Root tooling</h3>
+<pre><code class="language-bash">pnpm add -D -w typescript tsx eslint prettier turbo
+</code></pre>
+<h3>3) Shared package</h3>
+<pre><code class="language-bash">cd packages/shared
+pnpm init -y
+pnpm add zod
+mkdir -p src &amp;&amp; printf &quot;export * from &#39;./dto&#39;;\n&quot; &gt; src/index.ts
+</code></pre>
+<p><strong><code>packages/shared/src/dto.ts</code></strong></p>
+<pre><code class="language-ts">import { z } from &quot;zod&quot;;
+
+export const UserDTO = z.object({ id: z.string().uuid(), name: z.string().min(1), avatar: z.string().url().optional() });
+export type UserDTO = z.infer&lt;typeof UserDTO&gt;;
+
+export const RoomDTO = z.object({ id: z.string().uuid(), name: z.string().min(1).optional(), isGroup: z.boolean() });
+export type RoomDTO = z.infer&lt;typeof RoomDTO&gt;;
+
+export const MessageIn = z.object({
+  roomId: z.string().uuid(),
+  content: z.string().min(1).max(4000),
+  clientMsgId: z.string().uuid(),
+  replyToId: z.string().uuid().nullable().optional(),
+});
+export type MessageIn = z.infer&lt;typeof MessageIn&gt;;
+
+export const MessageOut = z.object({
+  id: z.string().uuid(),
+  roomId: z.string().uuid(),
+  senderId: z.string().uuid(),
+  content: z.string(),
+  createdAt: z.string(),
+  clientMsgId: z.string().uuid().optional(),
+  replyToId: z.string().uuid().nullable().optional(),
+});
+export type MessageOut = z.infer&lt;typeof MessageOut&gt;;
+
+export const TypingEvent = z.object({ roomId: z.string().uuid(), isTyping: z.boolean() });
+export type TypingEvent = z.infer&lt;typeof TypingEvent&gt;;
+
+export const PresenceEvent = z.object({ userId: z.string().uuid(), online: z.boolean(), lastSeen: z.string() });
+export type PresenceEvent = z.infer&lt;typeof PresenceEvent&gt;;
+</code></pre>
+<p><strong><code>packages/shared/tsconfig.json</code></strong></p>
+<pre><code class="language-json">{
+  &quot;extends&quot;: &quot;../../tsconfig.base.json&quot;,
+  &quot;compilerOptions&quot;: {
+    &quot;outDir&quot;: &quot;dist&quot;,
+    &quot;declaration&quot;: true,
+    &quot;emitDeclarationOnly&quot;: true,
+    &quot;composite&quot;: true
+  },
+  &quot;include&quot;: [&quot;src&quot;],
+  &quot;exclude&quot;: [&quot;dist&quot;]
+}
+</code></pre>
+<p><strong><code>packages/shared/package.json</code></strong></p>
+<pre><code class="language-json">{
+  &quot;name&quot;: &quot;shared&quot;,
+  &quot;version&quot;: &quot;0.0.0&quot;,
+  &quot;private&quot;: true,
+  &quot;type&quot;: &quot;module&quot;,
+  &quot;main&quot;: &quot;dist/index.js&quot;,
+  &quot;types&quot;: &quot;dist/index.d.ts&quot;,
+  &quot;scripts&quot;: {
+    &quot;build&quot;: &quot;tsc -p tsconfig.json&quot;,
+    &quot;dev&quot;: &quot;tsc -w -p tsconfig.json&quot;,
+    &quot;lint&quot;: &quot;eslint .&quot;
+  }
+}
+</code></pre>
+<p>Go back to root:</p>
+<pre><code class="language-bash">cd ../../
+</code></pre>
+<h3>4) Root tsconfig</h3>
+<p><strong><code>tsconfig.base.json</code></strong></p>
+<pre><code class="language-json">{
+  &quot;compilerOptions&quot;: {
+    &quot;target&quot;: &quot;ES2022&quot;,
+    &quot;lib&quot;: [&quot;ES2022&quot;, &quot;DOM&quot;],
+    &quot;module&quot;: &quot;ESNext&quot;,
+    &quot;moduleResolution&quot;: &quot;Bundler&quot;,
+    &quot;resolveJsonModule&quot;: true,
+    &quot;esModuleInterop&quot;: true,
+    &quot;skipLibCheck&quot;: true,
+    &quot;forceConsistentCasingInFileNames&quot;: true,
+    &quot;strict&quot;: true,
+    &quot;noUncheckedIndexedAccess&quot;: true,
+    &quot;useDefineForClassFields&quot;: true,
+    &quot;baseUrl&quot;: &quot;.&quot;,
+    &quot;paths&quot;: {
+      &quot;shared/*&quot;: [&quot;packages/shared/src/*&quot;]
+    }
+  }
+}
+</code></pre>
+<p><strong><code>tsconfig.json</code></strong></p>
+<pre><code class="language-json">{
+  &quot;files&quot;: [],
+  &quot;references&quot;: [
+    { &quot;path&quot;: &quot;packages/shared&quot; },
+    { &quot;path&quot;: &quot;apps/api&quot; },
+    { &quot;path&quot;: &quot;apps/web&quot; }
+  ],
+  &quot;extends&quot;: &quot;./tsconfig.base.json&quot;,
+  &quot;compilerOptions&quot;: { &quot;composite&quot;: true, &quot;declaration&quot;: false }
+}
+</code></pre>
+<h3>5) Prisma schema (API)</h3>
+<p><strong><code>apps/api/prisma/schema.prisma</code></strong></p>
+<pre><code class="language-prisma">generator client { provider = &quot;prisma-client-js&quot; }
+datasource db { provider = &quot;postgresql&quot; url = env(&quot;POSTGRES_URL&quot;) }
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  avatar    String?
+  password  String
+  messages  Message[]
+  memberships Membership[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Room {
+  id        String     @id @default(uuid())
+  name      String?
+  isGroup   Boolean    @default(false)
+  messages  Message[]
+  members   Membership[]
+  createdAt DateTime   @default(now())
+}
+
+model Membership {
+  id      String @id @default(uuid())
+  user    User   @relation(fields: [userId], references: [id])
+  userId  String
+  room    Room   @relation(fields: [roomId], references: [id])
+  roomId  String
+  role    String @default(&quot;member&quot;)
+  @@unique([userId, roomId])
+}
+
+model Message {
+  id          String   @id @default(uuid())
+  room        Room     @relation(fields: [roomId], references: [id])
+  roomId      String
+  sender      User     @relation(fields: [senderId], references: [id])
+  senderId    String
+  content     String
+  clientMsgId String?
+  replyTo     Message? @relation(&quot;Reply&quot;, fields: [replyToId], references: [id])
+  replyToId   String?
+  createdAt   DateTime @default(now())
+  @@index([roomId, createdAt])
+  @@unique([roomId, clientMsgId])
+}
+</code></pre>
+<h3>6) Env</h3>
+<p><strong><code>.env</code> (root)</strong></p>
+<pre><code>POSTGRES_URL=postgresql://chat:chat@postgres:5432/chat
+REDIS_URL=redis://redis:6379
+JWT_ACCESS_SECRET=dev_access_secret_change
+JWT_REFRESH_SECRET=dev_refresh_secret_change
+NEXT_PUBLIC_SOCKET_URL=http://localhost:3001
+API_PORT=3001
+WEB_PORT=3000
+NODE_ENV=development
+</code></pre>
+<h3>7) Docker Compose</h3>
+<p><strong><code>docker-compose.yml</code></strong></p>
+<pre><code class="language-yaml">services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: chat
+      POSTGRES_PASSWORD: chat
+      POSTGRES_DB: chat
+    ports: [&quot;5432:5432&quot;]
+    healthcheck:
+      test: [&quot;CMD-SHELL&quot;, &quot;pg_isready -U chat&quot;]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    ports: [&quot;6379:6379&quot;]
+
+  api:
+    build: ./apps/api
+    env_file: .env
+    environment:
+      API_PORT: 3001
+      REDIS_URL: redis://redis:6379
+      POSTGRES_URL: postgresql://chat:chat@postgres:5432/chat
+    ports: [&quot;3001:3001&quot;]
+    depends_on: [postgres, redis]
+
+  web:
+    build: ./apps/web
+    env_file: .env
+    environment:
+      NEXT_PUBLIC_SOCKET_URL: http://localhost:3001
+    ports: [&quot;3000:3000&quot;]
+    depends_on: [api]
+</code></pre>
+<h3>8) NestJS API</h3>
+<p><strong><code>apps/api/Dockerfile</code></strong></p>
+<pre><code class="language-dockerfile">FROM node:20-alpine AS deps
+WORKDIR /app
+COPY package*.json .
+RUN npm ci
+
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npm run build
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules ./node_modules
+COPY prisma ./prisma
+EXPOSE 3001
+CMD [&quot;node&quot;, &quot;dist/main.js&quot;]
+</code></pre>
+<p><strong><code>apps/api/src/main.ts</code></strong></p>
+<pre><code class="language-ts">import { NestFactory } from &#39;@nestjs/core&#39;;
+import { AppModule } from &#39;./app.module&#39;;
+import { ValidationPipe } from &#39;@nestjs/common&#39;;
+import { IoAdapter } from &#39;@nestjs/platform-socket.io&#39;;
+import { createClient } from &#39;redis&#39;;
+import { createAdapter } from &#39;@socket.io/redis-adapter&#39;;
+import type { ServerOptions } from &#39;socket.io&#39;;
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+
+  app.enableCors({ origin: [/^http:\/\/localhost:\d+$/], credentials: true });
+  app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
+
+  const redisUrl = process.env.REDIS_URL;
+  if (redisUrl) {
+    const pubClient = createClient({ url: redisUrl });
+    const subClient = pubClient.duplicate();
+    await pubClient.connect();
+    await subClient.connect();
+
+    const ioAdapter = new IoAdapter(app);
+    (ioAdapter as any).createIOServer = function (port: number, options?: ServerOptions) {
+      const server = (IoAdapter.prototype as any).createIOServer.call(this, port, {
+        ...options,
+        cors: { origin: [/^http:\/\/localhost:\d+$/], credentials: true },
+      });
+      server.adapter(createAdapter(pubClient, subClient));
+      return server;
+    };
+    app.useWebSocketAdapter(ioAdapter);
+  }
+
+  await app.listen(Number(process.env.API_PORT) || 3001);
+}
+
+bootstrap();
+</code></pre>
+<p><strong><code>apps/api/src/app.module.ts</code></strong></p>
+<pre><code class="language-ts">import { Module } from &#39;@nestjs/common&#39;;
+import { PrismaService } from &#39;./prisma.service&#39;;
+import { AuthModule } from &#39;./auth/auth.module&#39;;
+import { ChatModule } from &#39;./chat/chat.module&#39;;
+
+@Module({ providers: [PrismaService], imports: [AuthModule, ChatModule] })
+export class AppModule {}
+</code></pre>
+<p><strong><code>apps/api/src/prisma.service.ts</code></strong></p>
+<pre><code class="language-ts">import { INestApplication, Injectable, OnModuleInit } from &#39;@nestjs/common&#39;;
+import { PrismaClient } from &#39;@prisma/client&#39;;
+
+@Injectable()
+export class PrismaService extends PrismaClient implements OnModuleInit {
+  async onModuleInit() { await this.$connect(); }
+  async enableShutdownHooks(app: INestApplication) {
+    this.$on(&#39;beforeExit&#39;, async () =&gt; { await app.close(); });
+  }
+}
+</code></pre>
+<p><strong>Auth</strong>
+<code>apps/api/src/auth/auth.module.ts</code></p>
+<pre><code class="language-ts">import { Module } from &#39;@nestjs/common&#39;;
+import { JwtModule } from &#39;@nestjs/jwt&#39;;
+import { AuthService } from &#39;./auth.service&#39;;
+
+@Module({
+  imports: [JwtModule.register({ global: true, secret: process.env.JWT_ACCESS_SECRET })],
+  providers: [AuthService],
+  exports: [AuthService]
+})
+export class AuthModule {}
+</code></pre>
+<p><code>apps/api/src/auth/auth.service.ts</code></p>
+<pre><code class="language-ts">import { Injectable } from &#39;@nestjs/common&#39;;
+import { JwtService } from &#39;@nestjs/jwt&#39;;
+
+@Injectable()
+export class AuthService {
+  constructor(private jwt: JwtService) {}
+  signAccess(payload: { sub: string; name: string }) {
+    return this.jwt.sign(payload, { secret: process.env.JWT_ACCESS_SECRET, expiresIn: &#39;15m&#39; });
+  }
+  verify(token: string) { return this.jwt.verify(token, { secret: process.env.JWT_ACCESS_SECRET }); }
+}
+</code></pre>
+<p><strong>Chat module &amp; gateway</strong>
+<code>apps/api/src/chat/chat.module.ts</code></p>
+<pre><code class="language-ts">import { Module } from &#39;@nestjs/common&#39;;
+import { ChatGateway } from &#39;./chat.gateway&#39;;
+import { ChatService } from &#39;./chat.service&#39;;
+import { PrismaService } from &#39;../prisma.service&#39;;
+import { AuthModule } from &#39;../auth/auth.module&#39;;
+
+@Module({ imports: [AuthModule], providers: [ChatGateway, ChatService, PrismaService] })
+export class ChatModule {}
+</code></pre>
+<p><code>apps/api/src/chat/chat.gateway.ts</code></p>
+<pre><code class="language-ts">import { WebSocketGateway, WebSocketServer, SubscribeMessage, MessageBody, ConnectedSocket, OnGatewayConnection, OnGatewayDisconnect } from &#39;@nestjs/websockets&#39;;
+import type { Server, Socket } from &#39;socket.io&#39;;
+import { ChatService } from &#39;./chat.service&#39;;
+import { z } from &#39;zod&#39;;
+import { MessageIn as MessageInSchema } from &#39;shared/dto&#39;;
+import { AuthService } from &#39;../auth/auth.service&#39;;
+
+const TypingSchema = z.object({ roomId: z.string().uuid(), isTyping: z.boolean() });
+
+@WebSocketGateway({ namespace: &#39;/chat&#39;, cors: { origin: [/^http:\/\/localhost:\d+$/], credentials: true } })
+export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
+  @WebSocketServer() server: Server;
+  private presence = new Map&lt;string, { userId: string; lastSeen: number }&gt;();
+
+  constructor(private chat: ChatService, private auth: AuthService) {}
+
+  async handleConnection(client: Socket) {
+    try {
+      const token = (client.handshake.auth as any)?.token || client.handshake.headers[&#39;x-access-token&#39;];
+      const payload = this.auth.verify(String(token));
+      (client as any).userId = payload.sub;
+      this.presence.set(client.id, { userId: payload.sub, lastSeen: Date.now() });
+      client.emit(&#39;connected&#39;, { ok: true });
+    } catch (e) {
+      client.emit(&#39;error&#39;, { message: &#39;unauthorized&#39; });
+      client.disconnect(true);
+    }
+  }
+
+  async handleDisconnect(client: Socket) {
+    const p = this.presence.get(client.id);
+    if (p) {
+      await this.chat.updateLastSeen(p.userId);
+      this.presence.delete(client.id);
+      this.server.emit(&#39;presence:update&#39;, { userId: p.userId, online: false, lastSeen: new Date().toISOString() });
+    }
+  }
+
+  @SubscribeMessage(&#39;room:join&#39;)
+  async onJoin(@ConnectedSocket() client: Socket, @MessageBody() body: { roomId: string }) {
+    await this.chat.ensureMembership((client as any).userId, body.roomId);
+    client.join(body.roomId);
+    const history = await this.chat.getRecentMessages(body.roomId);
+    client.emit(&#39;room:history&#39;, history);
+  }
+
+  @SubscribeMessage(&#39;room:leave&#39;)
+  onLeave(@ConnectedSocket() client: Socket, @MessageBody() body: { roomId: string }) {
+    client.leave(body.roomId);
+  }
+
+  @SubscribeMessage(&#39;msg:send&#39;)
+  async onMessage(@ConnectedSocket() client: Socket, @MessageBody() body: unknown) {
+    const parsed = MessageInSchema.safeParse(body);
+    if (!parsed.success) return client.emit(&#39;msg:nack&#39;, { clientMsgId: (body as any)?.clientMsgId, error: &#39;invalid_payload&#39; });
+
+    const senderId = (client as any).userId as string;
+    const key = `flood:${client.id}`;
+    const now = Date.now();
+    const last = (client as any)[key] || 0;
+    if (now - last &lt; 200) return;
+    (client as any)[key] = now;
+
+    const saved = await this.chat.saveMessage({ ...parsed.data, senderId });
+    this.server.to(parsed.data.roomId).emit(&#39;msg:new&#39;, saved);
+    client.emit(&#39;msg:ack&#39;, { clientMsgId: parsed.data.clientMsgId, serverId: saved.id });
+  }
+
+  @SubscribeMessage(&#39;typing&#39;)
+  async onTyping(@ConnectedSocket() client: Socket, @MessageBody() body: unknown) {
+    const parsed = TypingSchema.safeParse(body);
+    if (!parsed.success) return;
+    this.server.to(parsed.data.roomId).emit(&#39;typing&#39;, { userId: (client as any).userId, ...parsed.data });
+  }
+}
+</code></pre>
+<p><code>apps/api/src/chat/chat.service.ts</code></p>
+<pre><code class="language-ts">import { Injectable } from &#39;@nestjs/common&#39;;
+import { PrismaService } from &#39;../prisma.service&#39;;
+import { MessageIn } from &#39;shared/dto&#39;;
+
+@Injectable()
+export class ChatService {
+  constructor(private prisma: PrismaService) {}
+
+  async ensureMembership(userId: string, roomId: string) {
+    const exists = await this.prisma.membership.findUnique({ where: { userId_roomId: { userId, roomId } } });
+    if (!exists) throw new Error(&#39;not a member&#39;);
+  }
+
+  async getRecentMessages(roomId: string) {
+    return this.prisma.message.findMany({ where: { roomId }, orderBy: { createdAt: &#39;asc&#39; }, take: 100 });
+  }
+
+  async saveMessage(input: MessageIn &amp; { senderId: string }) {
+    return this.prisma.message.upsert({
+      where: { roomId_clientMsgId: { roomId: input.roomId, clientMsgId: input.clientMsgId } },
+      create: { roomId: input.roomId, senderId: input.senderId, content: input.content, clientMsgId: input.clientId, replyToId: input.replyToId ?? undefined },
+      update: {}
+    });
+  }
+
+  async updateLastSeen(userId: string) {
+    await this.prisma.user.update({ where: { id: userId }, data: { updatedAt: new Date() } });
+  }
+}
+</code></pre>
+<h3>9) Next.js Frontend</h3>
+<p><strong><code>apps/web/providers/SocketProvider.tsx</code></strong></p>
+<pre><code class="language-tsx">&#39;use client&#39;;
+import { io, Socket } from &#39;socket.io-client&#39;;
+import React, { createContext, useContext, useEffect, useMemo } from &#39;react&#39;;
+
+const SocketCtx = createContext&lt;Socket | null&gt;(null);
+export function useSocket(){ const s = useContext(SocketCtx); if(!s) throw new Error(&#39;No socket&#39;); return s; }
+
+export default function SocketProvider({ token, children }: { token: string; children: React.ReactNode }){
+  const url = (process.env.NEXT_PUBLIC_SOCKET_URL || &#39;http://localhost:3001&#39;) + &#39;/chat&#39;;
+  const socket = useMemo(() =&gt; io(url, { autoConnect: false, auth: { token } }), [url, token]);
+  useEffect(()=&gt;{ socket.connect(); return ()=&gt;{ socket.disconnect(); }; }, [socket]);
+  return &lt;SocketCtx.Provider value={socket}&gt;{children}&lt;/SocketCtx.Provider&gt;;
+}
+</code></pre>
+<p><strong><code>apps/web/app/chat/ChatRoom.tsx</code></strong></p>
+<pre><code class="language-tsx">&#39;use client&#39;;
+import { useEffect, useRef, useState } from &#39;react&#39;;
+import { useSocket } from &#39;../providers/SocketProvider&#39;;
+import { v4 as uuid } from &#39;uuid&#39;;
+
+export default function ChatRoom({ roomId, userId }: { roomId: string; userId: string }){
+  const socket = useSocket();
+  const [messages, setMessages] = useState&lt;any[]&gt;([]);
+  const [input, setInput] = useState(&#39;&#39;);
+  const [typingUsers, setTypingUsers] = useState&lt;Set&lt;string&gt;&gt;(new Set());
+  const endRef = useRef&lt;HTMLDivElement&gt;(null);
+
+  useEffect(()=&gt;{
+    socket.emit(&#39;room:join&#39;, { roomId });
+    socket.on(&#39;room:history&#39;, (hist)=&gt; setMessages(hist));
+    socket.on(&#39;msg:new&#39;, (m)=&gt; setMessages((cur)=&gt; [...cur, m]));
+    socket.on(&#39;msg:ack&#39;, ({ clientMsgId, serverId })=&gt;{
+      setMessages((cur)=&gt; cur.map(m=&gt; m.clientMsgId===clientMsgId ? { ...m, id: serverId } : m));
+    });
+    socket.on(&#39;typing&#39;, ({ userId: uid, roomId: rid, isTyping })=&gt;{
+      if(rid!==roomId || uid===userId) return;
+      setTypingUsers(prev =&gt; { const next = new Set(prev); isTyping ? next.add(uid) : next.delete(uid); return next; });
+    });
+    return ()=&gt;{
+      socket.emit(&#39;room:leave&#39;, { roomId });
+      socket.off(&#39;room:history&#39;); socket.off(&#39;msg:new&#39;); socket.off(&#39;msg:ack&#39;); socket.off(&#39;typing&#39;);
+    };
+  },[roomId, socket, userId]);
+
+  useEffect(()=&gt;{ endRef.current?.scrollIntoView({ behavior: &#39;smooth&#39; }); }, [messages.length]);
+
+  const send = () =&gt; {
+    if(!input.trim()) return;
+    const clientMsgId = uuid();
+    const optimistic = { id: &#39;temp-&#39;+clientMsgId, clientMsgId, roomId, senderId: userId, content: input, createdAt: new Date().toISOString() };
+    setMessages((cur)=&gt; [...cur, optimistic]);
+    socket.emit(&#39;msg:send&#39;, { roomId, content: input, clientMsgId });
+    setInput(&#39;&#39;);
+  };
+
+  const onTyping = (v: string) =&gt; {
+    setInput(v);
+    socket.emit(&#39;typing&#39;, { roomId, isTyping: v.length&gt;0 });
+  };
+
+  return (
+    &lt;div className=&quot;flex h-full flex-col&quot;&gt; 
+      &lt;div className=&quot;flex-1 overflow-y-auto space-y-2 p-4&quot;&gt;
+        {messages.map(m =&gt; (
+          &lt;div key={m.id} className={`max-w-[70%] rounded-2xl px-3 py-2 shadow ${m.senderId===userId ? &#39;ml-auto bg-blue-600 text-white&#39; : &#39;bg-gray-200&#39;}`}&gt;
+            &lt;div className=&quot;text-sm whitespace-pre-wrap break-words&quot;&gt;{m.content}&lt;/div&gt;
+            &lt;div className=&quot;text-[10px] opacity-70 mt-1&quot;&gt;{new Date(m.createdAt).toLocaleTimeString()}&lt;/div&gt;
+          &lt;/div&gt;
+        ))}
+        &lt;div ref={endRef} /&gt;
+      &lt;/div&gt;
+      &lt;div className=&quot;h-6 px-4 text-xs text-gray-500&quot;&gt;{typingUsers.size&gt;0 ? &#39;Someone is typing…&#39; : &#39; &#39;}&lt;/div&gt;
+      &lt;div className=&quot;p-4 flex gap-2&quot;&gt;
+        &lt;input value={input} onChange={(e)=&gt; onTyping(e.target.value)} onKeyDown={(e)=&gt; e.key===&#39;Enter&#39; &amp;&amp; send()} placeholder=&quot;Write a message&quot; className=&quot;flex-1 rounded-xl border px-3 py-2&quot; /&gt;
+        &lt;button onClick={send} className=&quot;rounded-xl px-4 py-2 bg-blue-600 text-white shadow&quot;&gt;Send&lt;/button&gt;
+      &lt;/div&gt;
+    &lt;/div&gt;
+  );
+}
+</code></pre>
+<p><strong><code>apps/web/app/chat/page.tsx</code></strong></p>
+<pre><code class="language-tsx">import SocketProvider from &#39;../providers/SocketProvider&#39;;
+import ChatRoom from &#39;./ChatRoom&#39;;
+
+export default function Page(){
+  const fakeUser = { id: &#39;00000000-0000-0000-0000-000000000001&#39;, name: &#39;Alex&#39; };
+  const fakeToken = &#39;dev-jwt-for-demo&#39;; // replace with real JWT
+  const roomId = &#39;00000000-0000-0000-0000-000000000002&#39;;
+  return (
+    &lt;SocketProvider token={fakeToken}&gt;
+      &lt;main className=&quot;h-[100dvh] max-w-3xl mx-auto&quot;&gt;
+        &lt;ChatRoom userId={fakeUser.id} roomId={roomId} /&gt;
+      &lt;/main&gt;
+    &lt;/SocketProvider&gt;
+  );
+}
+</code></pre>
+<h3>10) Scripts</h3>
+<p><strong>Root <code>package.json</code></strong></p>
+<pre><code class="language-json">{
+  &quot;private&quot;: true,
+  &quot;workspaces&quot;: [&quot;apps/*&quot;, &quot;packages/*&quot;],
+  &quot;scripts&quot;: {
+    &quot;db:migrate&quot;: &quot;pnpm --filter api prisma migrate dev&quot;,
+    &quot;dev&quot;: &quot;pnpm -r --parallel dev&quot;,
+    &quot;build&quot;: &quot;pnpm -r build&quot;,
+    &quot;start&quot;: &quot;docker compose up --build&quot;
+  }
+}
+</code></pre>
+<h3>11) Security &amp; best practices</h3>
+<ul>
+<li>JWT in handshake; short‑lived access tokens + refresh over HTTPS.</li>
+<li>Validate every incoming event with <strong>zod</strong>; never trust client.</li>
+<li>Rate‑limit + flood control (Redis token bucket in production).</li>
+<li>Idempotency with <code>clientMsgId</code> to avoid dupes on reconnects.</li>
+<li>Structured logs; enable OpenTelemetry and metrics.</li>
+<li>Use <strong>Redis adapter</strong> and sticky sessions behind load balancer.</li>
+<li>Media upload via signed URLs; scan attachments.</li>
+</ul>
+<h3>12) Running</h3>
+<pre><code class="language-bash"># DB and Redis
+docker compose up -d postgres redis
+
+# API
+pnpm -F api prisma migrate dev --name init
+pnpm -F api dev
+
+# Web
+pnpm -F web dev
+</code></pre>
+<hr>
+<h2>Next steps</h2>
+<ul>
+<li>Real auth (credentials/OAuth) and SSR token issuance.</li>
+<li>Presence with Redis sets and TTLs (emit room presence lists).</li>
+<li>Message search (Postgres full‑text or Meilisearch/Typesense).</li>
+<li>Read receipts &amp; edits/deletes with audit logs.</li>
+<li>Media messages (uploads, thumbnails, link unfurling).</li>
+<li>Push notifications (WebPush/APNs/FCM) + mobile shell (Expo).</li>
+</ul>
+

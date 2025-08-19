@@ -1,0 +1,19 @@
+{
+    "files": [],
+    "references": [
+        {
+            "path": "packages/shared"
+        },
+        {
+            "path": "apps/api"
+        },
+        {
+            "path": "apps/web"
+        }
+    ],
+    "extends": "./tsconfig.base.json",
+    "compilerOptions": {
+        "composite": true,
+        "declaration": false
+    }
+}
