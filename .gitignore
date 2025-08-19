@@ -1,0 +1,73 @@
+node_modules
+.pnpm-store
+
+**/coverage
+
+
+# ================================
+# Node / Monorepo Essentials
+# ================================
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+.pnp.*
+.pnp.js
+
+# ================================
+# Environment Files
+# ================================
+**/.env
+**/.env.*        # .env.local, .env.production, etc.
+!.env.example    # keep examples if you have them
+
+# ================================
+# Build Outputs
+# ================================
+**/dist/
+**/build/
+**/.cache/
+**/.next/
+**/out/
+.turbo/
+coverage/
+.tmp/
+
+# ================================
+# Logs
+# ================================
+logs
+*.log
+*.log.*
+*.out
+*.pid
+*.seed
+*.pid.lock
+
+# ================================
+# IDE / OS Files
+# ================================
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ================================
+# Docker
+# ================================
+docker-compose.override.yml
+.docker/
+
+# ================================
+# Other
+# ================================
+*.tgz
+*.zip
+*.tar
+*.gz
+*.orig
