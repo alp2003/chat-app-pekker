@@ -163,8 +163,8 @@ export const getMe = () =>
 export const listConversations = () =>
     apiGetData<Conversation[]>("/chat/conversations");
 
-export const listMessages = (roomId: string) =>
-    apiGetData<Message[]>(`/chat/rooms/${roomId}/messages`);
+export const listMessages = (roomId: string, limit = 5000) =>
+    apiGetData<Message[]>(`/chat/rooms/${roomId}/messages?limit=${limit}`);
 
 export const startDm = (username: string) =>
     apiPostData<{ id: string }>("/chat/dm/start", { username });

@@ -104,95 +104,83 @@ export class ChatService {
   }
 
   async listConversations(userId: string) {
-    const rooms = await this.prisma.room.findMany({
-      where: { members: { some: { userId } } },
-      select: {
-        id: true,
-        name: true,
-        isGroup: true,
-        members: {
-          select: {
-            user: {
-              select: {
-                id: true,
-                username: true,
-                displayName: true,
-                avatar: true,
-              },
+    const memberships = await this.prisma.membership.findMany({
+      where: { userId },
+      include: {
+        room: {
+          include: {
+            members: {
+              include: { user: { select: { id: true, username: true } } },
+            },
+            messages: {
+              orderBy: { createdAt: 'desc' },
+              take: 1,
+              select: { content: true, createdAt: true, senderId: true },
             },
           },
         },
-        messages: {
-          orderBy: { createdAt: 'desc' },
-          take: 1,
-          select: { content: true, createdAt: true, senderId: true },
-        },
       },
-      orderBy: { createdAt: 'desc' },
     });
 
-    return rooms.map((r) => {
-      const members = r.members.map((m) => ({
-        id: m.user.id,
-        username: m.user.username,
-        displayName: m.user.displayName,
-        avatar: m.user.avatar,
-        online: false, // fill from presence if you track it
-      }));
+    const conversations = memberships.map((m) => {
+      const room = m.room;
+      let name = room.name || 'Unnamed Room';
+      let avatar: string | null = null;
 
-      // For DM, label as the "other" member; for group keep r.name
-      const other = !r.isGroup
-        ? members.find((m) => m.id !== userId)
-        : undefined;
+      // for DMs, use the other user's name
+      if (!room.isGroup && room.members.length === 2) {
+        const otherMember = room.members.find((mem) => mem.userId !== userId);
+        if (otherMember) {
+          name = otherMember.user.username;
+          // avatar = otherMember.user.avatar; // if you have avatars
+        }
+      }
+
+      const lastMsg = room.messages[0];
 
       return {
-        id: r.id,
-        name: r.isGroup
-          ? (r.name ?? 'Group')
-          : (other?.displayName ?? other?.username ?? 'Chat'),
-        avatar: r.isGroup ? null : (other?.avatar ?? null),
-        last: r.messages[0]?.content ?? null,
-        unread: 0,
-        online: !r.isGroup ? (other?.online ?? false) : false,
-        members, // 👈 include members
-      } as const;
+        id: room.id,
+        name,
+        avatar,
+        last: lastMsg?.content || null,
+        members: room.members.map((mem) => ({
+          id: mem.user.id,
+          username: mem.user.username,
+        })),
+      };
     });
+
+    return conversations;
   }
   // ---------- MESSAGES ----------
-  async getMessages(
-    userId: string,
-    roomId: string,
-    opts: { cursor?: string; limit?: number },
-  ) {
-    // optional: verify membership
-    const member = await this.prisma.membership.findUnique({
-      where: { userId_roomId: { userId, roomId } },
-      select: { id: true },
-    });
-    if (!member) return [];
+  async getMessages(userId: string, roomId: string, opts?: { limit?: number }) {
+    const take = Math.min(Math.max(opts?.limit ?? 3000, 1), 5000);
 
-    const take = Math.min(Math.max(opts.limit ?? 40, 1), 100);
-    const msgs = await this.prisma.message.findMany({
+    // Get the most recent messages first (desc), then reverse to show oldest first
+    const messages = await this.prisma.message.findMany({
       where: { roomId },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
       take,
-      select: {
-        id: true,
-        roomId: true,
-        senderId: true,
-        content: true,
-        createdAt: true,
-        replyToId: true,
+      include: {
+        sender: {
+          select: {
+            id: true,
+            username: true,
+          },
+        },
       },
     });
 
-    return msgs.map((m) => ({
-      id: m.id,
-      roomId: m.roomId,
-      userId: m.senderId, // frontend expects userId
-      content: m.content,
-      createdAt: m.createdAt.toISOString(),
-      replyToId: m.replyToId,
+    // Reverse to get chronological order (oldest first)
+    // Transform the data to match frontend expectations
+    return messages.reverse().map((msg) => ({
+      id: msg.id,
+      roomId: msg.roomId,
+      userId: msg.senderId, // ← Map senderId to userId for frontend
+      content: msg.content,
+      createdAt: msg.createdAt.toISOString(),
+      clientMsgId: msg.clientMsgId,
+      replyToId: msg.replyToId,
     }));
   }
 
@@ -213,8 +201,9 @@ export class ChatService {
       replyToId: input.replyToId ?? null,
     };
 
+    let saved;
     if (input.clientMsgId) {
-      return await this.prisma.message.upsert({
+      saved = await this.prisma.message.upsert({
         where: {
           roomId_clientMsgId: {
             roomId: input.roomId,
@@ -224,8 +213,20 @@ export class ChatService {
         update: {},
         create: data,
       });
+    } else {
+      saved = await this.prisma.message.create({ data });
     }
-    return await this.prisma.message.create({ data });
+
+    // Transform to match frontend expectations
+    return {
+      id: saved.id,
+      roomId: saved.roomId,
+      userId: saved.senderId, // ← Map senderId to userId for frontend
+      content: saved.content,
+      createdAt: saved.createdAt.toISOString(),
+      clientMsgId: saved.clientMsgId,
+      replyToId: saved.replyToId,
+    };
   }
 
   async getOrCreateDmByUsername(meId: string, otherUsername: string) {
@@ -280,7 +281,7 @@ export class ChatService {
     return this.prisma.message.findMany({
       where: { roomId },
       orderBy: { createdAt: 'asc' },
-      take: 100,
+      take: 3000,
     });
   }
 }

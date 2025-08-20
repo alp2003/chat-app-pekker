@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSocket } from "@/providers/SocketProvider";
 import type { Conversation, Message } from "@/lib/types/chat";
-import { getMe, listConversations, startDm } from "@/lib/api";
+import { getMe, listConversations, listMessages, startDm } from "@/lib/api";
 import ChatView from "@/components/chat/ChatView";
 
 export default function HomePageClient() {
@@ -60,6 +60,7 @@ export default function HomePageClient() {
                 userId: raw.userId ?? raw.senderId,
                 pending: false
             };
+
             setMessagesByRoom((m) => {
                 const list = m[msg.roomId] ?? [];
 
@@ -174,7 +175,25 @@ export default function HomePageClient() {
             socket.emit("room:join", { roomId: activeId });
         }
 
-        // ⚠️ removed listMessages fallback here (prevents duplicates)
+        // Load messages for this conversation if we don't have them
+        const hasMessages =
+            messagesByRoom[activeId] && messagesByRoom[activeId].length > 0;
+        if (!hasMessages) {
+            listMessages(activeId)
+                .then((messages) => {
+                    setMessagesByRoom((m) => ({
+                        ...m,
+                        [activeId]: messages
+                    }));
+                })
+                .catch((error) => {
+                    console.error(
+                        "Failed to load messages for room:",
+                        activeId,
+                        error
+                    );
+                });
+        }
     }, [activeId, socket]);
 
     // ---------- handlers for ChatView ----------
@@ -223,7 +242,14 @@ export default function HomePageClient() {
         if (!activeId || loadingOlder) return;
         setLoadingOlder(true);
         try {
-            // implement paging here if backend supports
+            // Load more messages using REST API with higher limit
+            const olderMessages = await listMessages(activeId);
+            setMessagesByRoom((m) => ({
+                ...m,
+                [activeId]: olderMessages
+            }));
+        } catch (error) {
+            console.error("Failed to load older messages:", error);
         } finally {
             setLoadingOlder(false);
         }
@@ -258,27 +284,29 @@ export default function HomePageClient() {
     );
 
     return (
-        <div className="flex h-screen w-screen overflow-hidden"><ChatView
-            me={me?.id ?? ""}
-            conversations={conversations}
-            activeId={activeId}
-            onSelectConversation={(id) => setActiveId(id)}
-            activeHeader={activeHeader}
-            messages={activeMessages}
-            onLoadOlder={onLoadOlder}
-            onSendText={onSendText}
-            onPickImage={onPickImage}
-            sidebarTopSlot={
-                <button
-                    className="w-full rounded-md bg-primary px-3 py-2 text-primary-foreground"
-                    onClick={() => {
-                        const u = prompt("Start DM with username:");
-                        if (u) startDmByUsername(u);
-                    }}
-                >
-                    New chat
-                </button>
-            }
-        /></div >
+        <div className="flex h-screen w-screen overflow-hidden">
+            <ChatView
+                me={me?.id ?? ""}
+                conversations={conversations}
+                activeId={activeId}
+                onSelectConversation={(id) => setActiveId(id)}
+                activeHeader={activeHeader}
+                messages={activeMessages}
+                onLoadOlder={onLoadOlder}
+                onSendText={onSendText}
+                onPickImage={onPickImage}
+                sidebarTopSlot={
+                    <button
+                        className="w-full rounded-md bg-primary px-3 py-2 text-primary-foreground"
+                        onClick={() => {
+                            const u = prompt("Start DM with username:");
+                            if (u) startDmByUsername(u);
+                        }}
+                    >
+                        New chat
+                    </button>
+                }
+            />
+        </div>
     );
 }

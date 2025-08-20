@@ -110,7 +110,7 @@ export default function ChatMessageList({
     useLayoutEffect(() => {
         lastCountRef.current = messages.length;
         setUnseen(0);
-        if (messageItems.length === 0) return;
+        if (messages.length === 0) return;
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 // ↓ hard jump to bottom (avoid align:'end' off-by-a-few-px)
@@ -118,7 +118,7 @@ export default function ChatMessageList({
             });
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [conversationKey, messageItems?.length]);
+    }, [conversationKey]);
 
     // Auto-scroll on new messages
     useEffect(() => {

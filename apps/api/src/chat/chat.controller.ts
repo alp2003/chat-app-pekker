@@ -49,7 +49,6 @@ export class ChatController {
   @Get('messages')
   async messages(@UserId() userId: string, @Query() q: MessagesQueryDto) {
     return this.chatService.getMessages(userId, q.roomId, {
-      cursor: q.cursor,
       limit: q.limit,
     });
   }
@@ -59,9 +58,12 @@ export class ChatController {
     @UserId() me: string,
     @Param('id') roomId: string,
     @Query('cursor') cursor?: string,
+    @Query('limit') limit?: string,
   ) {
     // (optionally validate membership)
-    return this.chatService.getRecentMessages(roomId, { cursor });
+    return this.chatService.getMessages(me, roomId, {
+      limit: limit ? parseInt(limit, 10) : 5000,
+    });
   }
 
   @Post('dm/start')

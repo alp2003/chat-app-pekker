@@ -1,4 +1,5 @@
 "use client";
+import { useState, useMemo } from "react";
 import { Conversation } from "@/lib/types/chat";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
@@ -12,17 +13,44 @@ import {
     SheetTitle,
     SheetTrigger
 } from "@/components/ui/sheet";
-import { Search, Menu } from "lucide-react";
+import { Search, Menu, X } from "lucide-react";
 
 function ConversationItem({
     c,
     active,
-    onClick
+    onClick,
+    searchQuery = ""
 }: {
     c: Conversation;
     active?: boolean;
     onClick: () => void;
+    searchQuery?: string;
 }) {
+    // Function to highlight search matches like WhatsApp
+    const highlightMatch = (text: string, query: string) => {
+        if (!query.trim()) return text;
+
+        const regex = new RegExp(
+            `(${query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})`,
+            "gi"
+        );
+        const parts = text.split(regex);
+
+        return parts.map((part, index) => {
+            const isMatch = regex.test(part);
+            return isMatch ? (
+                <span
+                    key={index}
+                    className="bg-yellow-200 dark:bg-yellow-800/50 text-foreground"
+                >
+                    {part}
+                </span>
+            ) : (
+                part
+            );
+        });
+    };
+
     return (
         <button
             onClick={onClick}
@@ -41,7 +69,7 @@ function ConversationItem({
             <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                     <span className="truncate text-sm font-medium">
-                        {c.name}
+                        {highlightMatch(c.name, searchQuery)}
                     </span>
                     {c.online && (
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
@@ -53,7 +81,7 @@ function ConversationItem({
                     ) : null}
                 </div>
                 <div className="truncate text-xs text-muted-foreground">
-                    {c.last ?? ""}
+                    {c.last ? highlightMatch(c.last, searchQuery) : ""}
                 </div>
             </div>
         </button>
@@ -71,26 +99,71 @@ export function DesktopSidebar({
     setActive: (id: string) => void;
     topSlot?: React.ReactNode; // e.g. new chat button
 }) {
+    const [searchQuery, setSearchQuery] = useState("");
+
+    // Filter conversations based on search query (like WhatsApp)
+    const filteredConvos = useMemo(() => {
+        if (!searchQuery.trim()) return convos;
+
+        const query = searchQuery.toLowerCase().trim();
+        return convos.filter((convo) => {
+            // Search in conversation name
+            const nameMatch = convo.name.toLowerCase().includes(query);
+
+            // Search in last message
+            const messageMatch =
+                convo.last?.toLowerCase().includes(query) ?? false;
+
+            return nameMatch || messageMatch;
+        });
+    }, [convos, searchQuery]);
+
     return (
         <div className="hidden w-[320px] shrink-0 flex-col border-r md:flex">
             <div className="p-3">
                 <div className="relative">
                     <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input placeholder="Search" className="pl-8" />
+                    <Input
+                        placeholder="Search chats"
+                        className="pl-8 pr-8"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                    {searchQuery && (
+                        <button
+                            onClick={() => setSearchQuery("")}
+                            className="absolute right-2 top-2.5 h-4 w-4 text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    )}
                 </div>
                 {topSlot && <div className="mt-2">{topSlot}</div>}
             </div>
             <Separator />
             <ScrollArea className="h-[calc(100dvh-64px)] p-2">
                 <div className="space-y-1">
-                    {convos.map((c) => (
-                        <ConversationItem
-                            key={c.id}
-                            c={c}
-                            active={c.id === activeId}
-                            onClick={() => setActive(c.id)}
-                        />
-                    ))}
+                    {filteredConvos.length > 0 ? (
+                        filteredConvos.map((c) => (
+                            <ConversationItem
+                                key={c.id}
+                                c={c}
+                                active={c.id === activeId}
+                                onClick={() => setActive(c.id)}
+                                searchQuery={searchQuery}
+                            />
+                        ))
+                    ) : searchQuery ? (
+                        <div className="flex flex-col items-center justify-center py-8 text-center">
+                            <Search className="h-12 w-12 text-muted-foreground mb-3" />
+                            <p className="text-sm font-medium text-muted-foreground">
+                                No chats found
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Try searching for something else
+                            </p>
+                        </div>
+                    ) : null}
                 </div>
             </ScrollArea>
         </div>
@@ -106,6 +179,25 @@ export function MobileSidebar({
     activeId?: string;
     setActive: (id: string) => void;
 }) {
+    const [searchQuery, setSearchQuery] = useState("");
+
+    // Filter conversations based on search query (like WhatsApp)
+    const filteredConvos = useMemo(() => {
+        if (!searchQuery.trim()) return convos;
+
+        const query = searchQuery.toLowerCase().trim();
+        return convos.filter((convo) => {
+            // Search in conversation name
+            const nameMatch = convo.name.toLowerCase().includes(query);
+
+            // Search in last message
+            const messageMatch =
+                convo.last?.toLowerCase().includes(query) ?? false;
+
+            return nameMatch || messageMatch;
+        });
+    }, [convos, searchQuery]);
+
     return (
         <Sheet>
             <SheetTrigger asChild>
@@ -118,19 +210,48 @@ export function MobileSidebar({
                     <SheetTitle>Chats</SheetTitle>
                 </SheetHeader>
                 <div className="px-3 pb-2">
-                    <Input placeholder="Search" />
+                    <div className="relative">
+                        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            placeholder="Search chats"
+                            className="pl-8 pr-8"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                        {searchQuery && (
+                            <button
+                                onClick={() => setSearchQuery("")}
+                                className="absolute right-2 top-2.5 h-4 w-4 text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        )}
+                    </div>
                 </div>
                 <Separator />
                 <ScrollArea className="h-[calc(100dvh-80px)] p-2">
                     <div className="space-y-1">
-                        {convos.map((c) => (
-                            <ConversationItem
-                                key={c.id}
-                                c={c}
-                                active={c.id === activeId}
-                                onClick={() => setActive(c.id)}
-                            />
-                        ))}
+                        {filteredConvos.length > 0 ? (
+                            filteredConvos.map((c) => (
+                                <ConversationItem
+                                    key={c.id}
+                                    c={c}
+                                    active={c.id === activeId}
+                                    onClick={() => setActive(c.id)}
+                                    searchQuery={searchQuery}
+                                />
+                            ))
+                        ) : searchQuery ? (
+                            <div className="flex flex-col items-center justify-center py-8 text-center">
+                                <Search className="h-12 w-12 text-muted-foreground mb-3" />
+                                <p className="text-sm font-medium text-muted-foreground">
+                                    No chats found
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">
+                                    Try searching for something else
+                                </p>
+                            </div>
+                        ) : null}
                     </div>
                 </ScrollArea>
             </SheetContent>

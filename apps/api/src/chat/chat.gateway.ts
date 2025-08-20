@@ -35,22 +35,32 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   async handleConnection(client: Socket) {
     try {
-      const token =
-        (client.handshake.auth as any)?.token ||
-        (client.handshake.headers['x-access-token'] as string | undefined);
+      const token = client.handshake.auth?.token;
+      if (!token) throw new Error('no_token');
 
-      if (!token) throw new Error('missing_token');
+      const payload = await this.auth.verifyAccess(token);
+      client.data.userId = payload.sub;
+      client.data.username = payload.username;
 
-      const payload = await this.auth.verifyAccess(String(token)); // secret from AuthModule
-      (client as any).userId = payload.sub as string;
+      console.log(
+        `🔌 WebSocket connected: ${payload.sub} (socket: ${client.id})`,
+      );
 
-      // presence
+      await this.chat.ensureUser(payload.sub, payload.username);
       this.presence.set(client.id, {
         userId: payload.sub,
         lastSeen: Date.now(),
       });
+
+      // Join all user's conversation rooms on connection
+      const conversations = await this.chat.listConversations(payload.sub);
+      for (const conv of conversations) {
+        client.join(conv.id);
+      }
+
       client.emit('connected', { ok: true });
     } catch {
+      console.log(`❌ WebSocket connection failed for socket: ${client.id}`);
       client.emit('error', { message: 'unauthorized' });
       client.disconnect(true);
     }
@@ -70,26 +80,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('room:join')
-  async onJoin(
+  async handleJoinRoom(
+    @MessageBody() { id }: { id: string },
     @ConnectedSocket() client: Socket,
-    @MessageBody() body: { roomId: string },
   ) {
-    const userId = (client as any).userId as string;
-    const { roomId } = body;
+    client.join(id);
 
-    // leave previous rooms (keep personal room if you add one later)
-    for (const r of client.rooms) if (r !== client.id) client.leave(r);
-
-    // ensure FK consistency & membership
-    await this.chat.ensureRoom(roomId);
-    if (!(await this.chat.isMember(userId, roomId))) {
-      await this.chat.addMember(userId, roomId);
-    }
-
-    client.join(roomId);
-
-    const history = await this.chat.getMessages(userId, roomId, { limit: 40 });
-    client.emit('room:history', { roomId, history });
+    // Emit to the room that someone joined (optional)
+    client.to(id).emit('user:joined', {
+      userId: client.data.userId,
+      username: client.data.username,
+    });
   }
 
   @SubscribeMessage('room:leave')
@@ -114,7 +115,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       });
     }
 
-    const senderId = (client as any).userId as string;
+    const senderId = client.data.userId as string;
 
     // simple flood control
     const key = `flood:${client.id}`;
@@ -148,6 +149,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (!parsed.success) return;
     this.server
       .to(parsed.data.roomId)
-      .emit('typing', { userId: (client as any).userId, ...parsed.data });
+      .emit('typing', { userId: client.data.userId, ...parsed.data });
   }
 }
