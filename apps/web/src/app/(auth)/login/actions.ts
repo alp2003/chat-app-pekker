@@ -11,35 +11,44 @@ export async function loginAction(data: {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(data),
-        // important: include so Nest can set the HttpOnly refresh cookie
+        // important: include so Nest can set both access and refresh HttpOnly cookies
         credentials: "include" as any
     });
-
-    console.log(`================================`);
-    console.log({ res });
 
     if (!res.ok) {
         const msg = await res.text();
         throw new Error(msg || "login_failed");
     }
 
-    console.log(`================================`);
-    console.log({ res });
+    const json = await res.json(); // { user } (access token now comes via Set-Cookie)
 
-    const json = await res.json(); // { access, user }
-    if (!json?.access) throw new Error("no_access_token");
+    // The backend already sets the access token as an httpOnly cookie
+    // But we also need a non-httpOnly cookie for socket.io authentication
+    const setCookieHeaders = res.headers.getSetCookie();
+    const accessCookie = setCookieHeaders.find((cookie) =>
+        cookie.startsWith("access=")
+    );
 
-    // Store short-lived access token in a readable cookie for the client (Socket handshake)
+    if (accessCookie) {
+        // Extract the token value from the Set-Cookie header
+        const tokenMatch = accessCookie.match(/access=([^;]+)/);
+        const accessToken = tokenMatch?.[1];
+
+        if (accessToken) {
+            // Set a non-httpOnly cookie for client-side access (Socket.io authentication)
+            const c = await cookies();
+            c.set(ACCESS_COOKIE, accessToken, {
+                httpOnly: false, // readable by client (SocketProvider)
+                sameSite: "lax",
+                secure: process.env.NODE_ENV === "production",
+                path: "/",
+                maxAge: 60 * 60 // 1 hour (longer than JWT so middleware can detect login state)
+            });
+        }
+    }
+
+    // Store lightweight user context (non-sensitive)
     const c = await cookies();
-    c.set(ACCESS_COOKIE, json.access, {
-        httpOnly: false, // readable by client (SocketProvider)
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-        path: "/",
-        maxAge: 60 * 60 // 1 hour (match API access TTL)
-    });
-
-    // Optionally store lightweight user context (non-sensitive)
     c.set("u_name", json.user?.username ?? "", { path: "/", sameSite: "lax" });
 
     return { ok: true };

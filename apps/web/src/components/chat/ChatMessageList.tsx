@@ -11,6 +11,75 @@ import { Virtuoso, VirtuosoHandle } from "react-virtuoso";
 import type { Message } from "@/lib/types/chat";
 import ChatBubble from "./ChatBubble";
 
+// Message item types for the virtualized list
+type MessageItem =
+    | { type: "message"; message: Message; index: number }
+    | { type: "dateSeparator"; date: string };
+
+// Utility functions for date formatting
+function formatDateSeparator(date: Date): string {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    // Reset time for accurate comparison
+    const messageDate = new Date(date);
+    messageDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    yesterday.setHours(0, 0, 0, 0);
+
+    if (messageDate.getTime() === today.getTime()) {
+        return "Today";
+    } else if (messageDate.getTime() === yesterday.getTime()) {
+        return "Yesterday";
+    } else {
+        // Format as "Monday, December 25, 2024"
+        return messageDate.toLocaleDateString("en-US", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric"
+        });
+    }
+}
+
+function isSameDay(date1: Date, date2: Date): boolean {
+    return (
+        date1.getFullYear() === date2.getFullYear() &&
+        date1.getMonth() === date2.getMonth() &&
+        date1.getDate() === date2.getDate()
+    );
+}
+
+function groupMessagesByDay(messages: Message[]): MessageItem[] {
+    if (messages.length === 0) return [];
+
+    const items: MessageItem[] = [];
+    let currentDate: Date | null = null;
+
+    messages.forEach((message, index) => {
+        const messageDate = new Date(message.createdAt);
+
+        // Add date separator if this is a new day
+        if (!currentDate || !isSameDay(currentDate, messageDate)) {
+            items.push({
+                type: "dateSeparator",
+                date: formatDateSeparator(messageDate)
+            });
+            currentDate = messageDate;
+        }
+
+        // Add the message
+        items.push({
+            type: "message",
+            message,
+            index
+        });
+    });
+
+    return items;
+}
+
 export default function ChatMessageList({
     messages, // oldest -> newest
     me,
@@ -31,11 +100,17 @@ export default function ChatMessageList({
     const [unseen, setUnseen] = useState(0);
     const lastCountRef = useRef(0);
 
+    // Group messages by day
+    const messageItems = useMemo(
+        () => groupMessagesByDay(messages),
+        [messages]
+    );
+
     // Snap to absolute bottom on conversation change
     useLayoutEffect(() => {
         lastCountRef.current = messages.length;
         setUnseen(0);
-        if (messages.length === 0) return;
+        if (messageItems.length === 0) return;
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 // ↓ hard jump to bottom (avoid align:'end' off-by-a-few-px)
@@ -43,7 +118,7 @@ export default function ChatMessageList({
             });
         });
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [conversationKey]);
+    }, [conversationKey, messageItems?.length]);
 
     // Auto-scroll on new messages
     useEffect(() => {
@@ -95,7 +170,7 @@ export default function ChatMessageList({
         <div className="relative h-full overflow-hidden">
             <Virtuoso
                 ref={vRef}
-                data={messages}
+                data={messageItems}
                 className="h-full"
                 components={{ Scroller }}
                 alignToBottom
@@ -103,8 +178,24 @@ export default function ChatMessageList({
                 atBottomStateChange={setAtBottom}
                 startReached={onStartReached}
                 increaseViewportBy={{ top: 200, bottom: 400 }}
-                computeItemKey={(i, m) => m.id ?? String(i)}
-                itemContent={(i, m) => {
+                computeItemKey={(i, item) => {
+                    if (item.type === "dateSeparator") {
+                        return `date-${item.date}`;
+                    }
+                    return item.message.id ?? String(item.index);
+                }}
+                itemContent={(i, item) => {
+                    if (item.type === "dateSeparator") {
+                        return (
+                            <div className="flex justify-center py-4">
+                                <div className="rounded-lg bg-gray-100 dark:bg-gray-800 px-3 py-1 text-xs text-gray-600 dark:text-gray-400">
+                                    {item.date}
+                                </div>
+                            </div>
+                        );
+                    }
+
+                    const m = item.message;
                     const mine = m.userId === me;
                     const peer =
                         !mine && getPeer ? getPeer(m.userId) : undefined;

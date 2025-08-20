@@ -8,31 +8,80 @@ export async function GET(
     { params }: { params: Promise<{ path: string[] }> }
 ) {
     const { path } = await params;
-    const token = req.cookies.get("access")?.value;
+
+    // Skip auth routes - let them be handled by specific auth route handlers
+    if (path[0] === "auth") {
+        return new Response("Not Found", { status: 404 });
+    }
+
     const url = `${API}/${path.join("/")}${req.nextUrl.search}`;
-    console.log(`url: ${url}`);
-    return fetch(url, {
+    const cookies = req.headers.get("cookie") || "";
+
+    // Only use httpOnly cookies, don't mix with Authorization headers
+    const response = await fetch(url, {
         method: "GET",
         headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {})
-        },
-        credentials: "include" as any
+            // Forward all cookies from the request
+            cookie: cookies,
+            // Forward user-agent and other relevant headers
+            "user-agent": req.headers.get("user-agent") || ""
+        }
+        // Don't use credentials: 'include' as we're manually forwarding cookies
     });
+
+    // Create a proper response with all headers forwarded
+    const responseText = await response.text();
+    const nextResponse = new Response(responseText, {
+        status: response.status,
+        statusText: response.statusText
+    });
+
+    // Forward all response headers except set-cookie (which we handle separately)
+    response.headers.forEach((value, key) => {
+        nextResponse.headers.set(key, value);
+    });
+
+    return nextResponse;
 }
 export async function POST(
     req: NextRequest,
     { params }: { params: Promise<{ path: string[] }> }
 ) {
     const { path } = await params;
+
+    // Skip auth routes - let them be handled by specific auth route handlers
+    if (path[0] === "auth") {
+        return new Response("Not Found", { status: 404 });
+    }
+
     const url = `${API}/${path.join("/")}`;
-    const token = req.cookies.get("access")?.value;
-    return fetch(url, {
+    const cookies = req.headers.get("cookie") || "";
+
+    // Only use httpOnly cookies, don't mix with Authorization headers
+    const response = await fetch(url, {
         method: "POST",
         headers: {
             "content-type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {})
+            // Forward all cookies from the request
+            cookie: cookies,
+            // Forward user-agent and other relevant headers
+            "user-agent": req.headers.get("user-agent") || ""
         },
-        body: await req.text(),
-        credentials: "include" as any
+        body: JSON.stringify(await req.json())
+        // Don't use credentials: 'include' as we're manually forwarding cookies
     });
+
+    // Create a proper response with all headers forwarded
+    const responseText = await response.text();
+    const nextResponse = new Response(responseText, {
+        status: response.status,
+        statusText: response.statusText
+    });
+
+    // Forward all response headers
+    response.headers.forEach((value, key) => {
+        nextResponse.headers.set(key, value);
+    });
+
+    return nextResponse;
 }

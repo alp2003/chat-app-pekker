@@ -20,6 +20,8 @@ import { JwtModule } from '@nestjs/jwt';
       validationSchema: Joi.object({
         JWT_ACCESS_SECRET: Joi.string().min(16).required(),
         JWT_ACCESS_EXPIRES: Joi.string().default('1h'),
+        JWT_REFRESH_SECRET: Joi.string().min(16).required(),
+        JWT_REFRESH_EXPIRES: Joi.string().default('30d'),
         JWT_ISSUER: Joi.string().optional(),
         JWT_AUDIENCE: Joi.string().optional(),
       }),

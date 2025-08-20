@@ -56,7 +56,7 @@ export class AuthController {
       req.ip,
     );
 
-    // httpOnly cookie for refresh
+    // httpOnly cookies for both tokens
     res.cookie('refresh', refresh, {
       httpOnly: true,
       sameSite: 'lax',
@@ -65,8 +65,15 @@ export class AuthController {
       path: '/auth',
     });
 
+    res.cookie('access', access, {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: this.cfg.get('NODE_ENV') === 'production',
+      maxAge: 1000 * 60 * 60, // 1 hour
+      path: '/',
+    });
+
     return {
-      access,
       user: {
         id: user.id,
         username: user.username,
@@ -81,28 +88,42 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     const token = (req.cookies?.refresh as string) || '';
-    const payload = JSON.parse(
-      Buffer.from(token.split('.')[1] || '', 'base64').toString() || '{}',
-    );
-    const { sub: userId } = payload as { sub?: string };
-    if (!userId) return { error: 'invalid_refresh' };
+    if (!token) {
+      return { error: 'no_refresh_token' };
+    }
 
-    const { access, refresh } = await this.auth.rotateRefresh(
-      userId,
-      token,
-      req.headers['user-agent'] as string,
-      req.ip,
-    );
+    try {
+      // Use proper JWT verification instead of manual parsing
+      const payload = await this.auth.verifyRefresh(token);
+      const userId = payload.sub;
 
-    res.cookie('refresh', refresh, {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: this.cfg.get('NODE_ENV') === 'production',
-      maxAge: 1000 * 60 * 60 * 24 * 30,
-      path: '/auth',
-    });
+      const { access, refresh } = await this.auth.rotateRefresh(
+        userId,
+        token,
+        req.headers['user-agent'] as string,
+        req.ip,
+      );
 
-    return { access };
+      res.cookie('refresh', refresh, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: this.cfg.get('NODE_ENV') === 'production',
+        maxAge: 1000 * 60 * 60 * 24 * 30,
+        path: '/auth',
+      });
+
+      res.cookie('access', access, {
+        httpOnly: true,
+        sameSite: 'lax',
+        secure: this.cfg.get('NODE_ENV') === 'production',
+        maxAge: 1000 * 60 * 60, // 1 hour
+        path: '/',
+      });
+
+      return { ok: true };
+    } catch (error) {
+      return { error: 'invalid_refresh_token' };
+    }
   }
 
   @Post('logout')
@@ -116,6 +137,7 @@ export class AuthController {
       if (userId) await this.auth.logout(userId, token);
     } catch {}
     res.clearCookie('refresh', { path: '/auth' });
+    res.clearCookie('access', { path: '/' });
     return { ok: true };
   }
 }
