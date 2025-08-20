@@ -17,6 +17,7 @@ export default function HomePageClient() {
         Record<string, Message[]>
     >({});
     const [loadingOlder, setLoadingOlder] = useState(false);
+    const [forceScrollToBottom, setForceScrollToBottom] = useState<number>(0);
 
     // track what we already joined / loaded
     const joinedRoomsRef = useRef<Set<string>>(new Set());
@@ -289,12 +290,21 @@ export default function HomePageClient() {
                 me={me?.id ?? ""}
                 conversations={conversations}
                 activeId={activeId}
-                onSelectConversation={(id) => setActiveId(id)}
+                onSelectConversation={(id) => {
+                    const wasAlreadyActive = id === activeId;
+                    setActiveId(id);
+
+                    // If selecting the same conversation, force scroll to bottom
+                    if (wasAlreadyActive) {
+                        setForceScrollToBottom(Date.now());
+                    }
+                }}
                 activeHeader={activeHeader}
                 messages={activeMessages}
                 onLoadOlder={onLoadOlder}
                 onSendText={onSendText}
                 onPickImage={onPickImage}
+                forceScrollToBottom={forceScrollToBottom}
                 sidebarTopSlot={
                     <button
                         className="w-full rounded-md bg-primary px-3 py-2 text-primary-foreground"

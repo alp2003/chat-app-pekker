@@ -85,7 +85,8 @@ export default function ChatMessageList({
     me,
     conversationKey, // active room id
     getPeer,
-    onStartReached
+    onStartReached,
+    forceScrollToBottom // Add this prop to force scrolling
 }: {
     messages: Message[];
     me: string;
@@ -94,11 +95,15 @@ export default function ChatMessageList({
         userId: string
     ) => { name?: string; avatar?: string | null } | undefined;
     onStartReached?: () => void;
+    forceScrollToBottom?: number; // timestamp to force scroll
 }) {
     const vRef = useRef<VirtuosoHandle | null>(null);
     const [atBottom, setAtBottom] = useState(true);
     const [unseen, setUnseen] = useState(0);
     const lastCountRef = useRef(0);
+    const lastConversationKeyRef = useRef<string | undefined>(undefined);
+    const hasScrolledForCurrentConversation = useRef(false);
+    const lastForceScrollRef = useRef<number>(0);
 
     // Group messages by day
     const messageItems = useMemo(
@@ -106,19 +111,108 @@ export default function ChatMessageList({
         [messages]
     );
 
-    // Snap to absolute bottom on conversation change
-    useLayoutEffect(() => {
-        lastCountRef.current = messages.length;
-        setUnseen(0);
-        if (messages.length === 0) return;
+    // Function to perform the scroll
+    const performScrollToBottom = (reason: string) => {
+        console.log(`📍 ${reason} for conversation:`, conversationKey);
+        console.log("📍 vRef.current exists:", !!vRef.current);
+        console.log(
+            "📍 messageItems.length:",
+            messageItems.length,
+            "messages.length:",
+            messages.length
+        );
+
+        // Try multiple approaches to ensure scrolling works
+        const scrollToBottom = () => {
+            if (vRef.current && messageItems.length > 0) {
+                console.log(
+                    "📍 Primary scroll with scrollTo (reliable method)"
+                );
+                // Use scrollTo as primary method - this is more reliable for getting to the absolute bottom
+                vRef.current.scrollTo({ top: 1e9, behavior: "auto" });
+
+                // Backup: try scrollToIndex to the last message item after a delay
+                setTimeout(() => {
+                    if (vRef.current && messageItems.length > 0) {
+                        const lastIndex = messageItems.length - 1;
+                        console.log(
+                            "📍 Backup scroll with scrollToIndex to index:",
+                            lastIndex
+                        );
+                        vRef.current.scrollToIndex({
+                            index: lastIndex,
+                            behavior: "auto",
+                            align: "start" // Try align: "start" to ensure we see the full message
+                        });
+                    }
+                }, 50);
+            } else {
+                console.log(
+                    "📍 vRef.current or messageItems not ready, retrying in 100ms..."
+                );
+                setTimeout(() => {
+                    if (vRef.current) {
+                        console.log("📍 Retry scroll with scrollTo");
+                        vRef.current.scrollTo({ top: 1e9, behavior: "auto" });
+                    }
+                }, 100);
+            }
+        };
+
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
-                // ↓ hard jump to bottom (avoid align:'end' off-by-a-few-px)
-                vRef.current?.scrollTo({ top: 1e9, behavior: "auto" });
+                scrollToBottom();
             });
         });
+    };
+
+    // Handle forced scrolling
+    useLayoutEffect(() => {
+        if (
+            forceScrollToBottom &&
+            forceScrollToBottom !== lastForceScrollRef.current
+        ) {
+            lastForceScrollRef.current = forceScrollToBottom;
+            if (messages.length > 0) {
+                performScrollToBottom("Force scroll");
+            }
+        }
+    }, [forceScrollToBottom, messages.length, messageItems.length]);
+
+    // Snap to absolute bottom on conversation change
+    useLayoutEffect(() => {
+        const conversationChanged =
+            lastConversationKeyRef.current !== conversationKey;
+        lastConversationKeyRef.current = conversationKey;
+
+        console.log("🔄 ChatMessageList useLayoutEffect:", {
+            conversationKey,
+            conversationChanged,
+            hasScrolledForCurrentConversation:
+                hasScrolledForCurrentConversation.current,
+            messagesLength: messages.length,
+            willScroll:
+                messages.length > 0 &&
+                (!hasScrolledForCurrentConversation.current ||
+                    conversationChanged)
+        });
+
+        if (conversationChanged) {
+            hasScrolledForCurrentConversation.current = false;
+            lastCountRef.current = messages.length;
+            setUnseen(0);
+        }
+
+        // Scroll to bottom if we have messages and (haven't scrolled for this conversation yet OR conversation changed)
+        if (
+            messages.length > 0 &&
+            (!hasScrolledForCurrentConversation.current || conversationChanged)
+        ) {
+            hasScrolledForCurrentConversation.current = true;
+            performScrollToBottom("Conversation change scroll");
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [conversationKey]);
+    }, [conversationKey, messages.length]);
 
     // Auto-scroll on new messages
     useEffect(() => {

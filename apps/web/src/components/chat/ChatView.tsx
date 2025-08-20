@@ -18,7 +18,8 @@ export default function ChatView({
     onSendText,
     onPickImage,
     rightHeaderSlot,
-    sidebarTopSlot
+    sidebarTopSlot,
+    forceScrollToBottom
 }: {
     me: string;
     conversations: Conversation[];
@@ -31,6 +32,7 @@ export default function ChatView({
     onPickImage: (file: File) => void;
     rightHeaderSlot?: React.ReactNode;
     sidebarTopSlot?: React.ReactNode;
+    forceScrollToBottom?: number;
 }) {
     const [text, setText] = useState("");
     const [drawerOpen, setDrawerOpen] = useState(false);
@@ -94,6 +96,7 @@ export default function ChatView({
                             me={me}
                             onStartReached={onLoadOlder}
                             conversationKey={activeId}
+                            forceScrollToBottom={forceScrollToBottom}
                             getPeer={(uid) => {
                                 const convo = conversations.find(
                                     (c) => c.id === activeId
