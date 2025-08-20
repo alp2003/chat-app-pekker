@@ -7,6 +7,7 @@ import { ChatModule } from './chat/chat.module';
 import * as Joi from 'joi';
 import { UsersModule } from './users/users.module';
 import { JwtModule } from '@nestjs/jwt';
+import { CacheService } from './common/cache.service';
 
 @Module({
   imports: [
@@ -33,6 +34,6 @@ import { JwtModule } from '@nestjs/jwt';
     UsersModule,
   ],
   controllers: [],
-  providers: [PrismaService],
+  providers: [PrismaService, CacheService],
 })
 export class AppModule {}

@@ -7,15 +7,91 @@ type Json = Record<string, any> | any[];
 let isRefreshing = false;
 let refreshPromise: Promise<boolean> | null = null;
 
+// Global token refresh state management
+let globalRefreshCallbacks: Array<
+    (isRefreshing: boolean, message?: string) => void
+> = [];
+
+export function subscribeToTokenRefresh(
+    callback: (isRefreshing: boolean, message?: string) => void
+) {
+    globalRefreshCallbacks.push(callback);
+    return () => {
+        globalRefreshCallbacks = globalRefreshCallbacks.filter(
+            (cb) => cb !== callback
+        );
+    };
+}
+
+function notifyRefreshState(isRefreshing: boolean, message?: string) {
+    globalRefreshCallbacks.forEach((callback) =>
+        callback(isRefreshing, message)
+    );
+}
+
 async function refreshToken(): Promise<boolean> {
     try {
+        const refreshStart = performance.now();
+        console.log("🔄 Starting token refresh...");
+        notifyRefreshState(true);
+
         const response = await fetch("/api/auth/refresh", {
             method: "POST",
             credentials: "include"
         });
-        return response.ok;
+
+        const refreshNetworkTime = Math.round(performance.now() - refreshStart);
+        console.log(
+            "🔄 Token refresh response:",
+            response.status,
+            response.statusText,
+            `(${refreshNetworkTime}ms)`
+        );
+
+        if (response.ok) {
+            const data = await response.json();
+            const refreshTotalTime = Math.round(
+                performance.now() - refreshStart
+            );
+            console.log(
+                "✅ Token refresh successful:",
+                data,
+                `(${refreshTotalTime}ms total)`
+            );
+
+            // Check if it actually worked
+            if (data.error) {
+                console.log(
+                    "❌ Token refresh failed - server returned error:",
+                    data.error
+                );
+                notifyRefreshState(false);
+                return false;
+            }
+
+            // Log cookies after refresh
+            setTimeout(() => {
+                console.log("🍪 New cookies after refresh:", document.cookie);
+                notifyRefreshState(false);
+            }, 100);
+
+            return true;
+        } else {
+            const errorData = await response.json().catch(() => ({}));
+            const refreshFailTime = Math.round(
+                performance.now() - refreshStart
+            );
+            console.log(
+                "❌ Token refresh failed with data:",
+                errorData,
+                `(${refreshFailTime}ms)`
+            );
+            notifyRefreshState(false);
+            return false;
+        }
     } catch (error) {
-        console.error("Token refresh failed:", error);
+        console.error("❌ Token refresh failed with error:", error);
+        notifyRefreshState(false);
         return false;
     }
 }
@@ -34,6 +110,9 @@ async function apiFetch<T = any>(
 
     // If we get 401 and it's not the refresh endpoint, try to refresh the token
     if (res.status === 401 && !path.includes("/auth/refresh")) {
+        const reconnectStart = performance.now();
+        console.log("🔒 Got 401 for", path, "- attempting token refresh");
+
         if (!isRefreshing) {
             isRefreshing = true;
             refreshPromise = refreshToken();
@@ -44,15 +123,40 @@ async function apiFetch<T = any>(
             isRefreshing = false;
             refreshPromise = null;
 
+            const refreshTime = Math.round(performance.now() - reconnectStart);
+            console.log(
+                "🔄 Token refresh result:",
+                refreshSuccess ? "success" : "failed",
+                `(${refreshTime}ms)`
+            );
+
             if (refreshSuccess) {
                 // Wait for cookies to be properly set by the browser
                 await new Promise((resolve) => setTimeout(resolve, 150));
 
+                const retryStart = performance.now();
+                console.log("🔄 Retrying original request:", path);
                 // Make a completely fresh request with new credentials
                 res = await fetch(`/api${path}`, {
                     credentials: "include",
                     ...options
                 });
+                const retryTime = Math.round(performance.now() - retryStart);
+                const totalReconnectTime = Math.round(
+                    performance.now() - reconnectStart
+                );
+                console.log(
+                    "🔄 Retry result:",
+                    res.status,
+                    res.statusText,
+                    `(retry: ${retryTime}ms, total reconnect: ${totalReconnectTime}ms)`
+                );
+            } else {
+                console.log(
+                    "❌ Token refresh failed - user should be redirected to login"
+                );
+                // Don't retry if refresh failed
+                return res;
             }
         }
     }

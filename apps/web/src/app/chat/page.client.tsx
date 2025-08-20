@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSocket } from "@/providers/SocketProvider";
 import type { Conversation, Message } from "@/lib/types/chat";
 import { getMe, listConversations, listMessages, startDm } from "@/lib/api";
+import { trackRequest } from "@/lib/request-tracker";
+import Logger from "@/lib/logger";
 import ChatView from "@/components/chat/ChatView";
 
 export default function HomePageClient() {
@@ -22,29 +24,103 @@ export default function HomePageClient() {
     // track what we already joined / loaded
     const joinedRoomsRef = useRef<Set<string>>(new Set());
     const loadedRoomsRef = useRef<Set<string>>(new Set());
+    const loadingRoomsRef = useRef<Set<string>>(new Set());
     const activeIdRef = useRef<string | undefined>(undefined);
 
     useEffect(() => {
         activeIdRef.current = activeId;
     }, [activeId]);
+
+    // Token expiration timer for testing
+    useEffect(() => {
+        Logger.timer.log(
+            "⏰",
+            "Token expiration timer started - access token should expire in 5 minutes"
+        );
+        Logger.timer.log(
+            "🍪",
+            "Initial cookies on page load:",
+            document.cookie
+        );
+
+        // Log at 4 minutes 55 seconds (5 seconds before expiration)
+        const warningTimer = setTimeout(() => {
+            Logger.timer.log(
+                "⚠️",
+                "Token will expire in 5 seconds - next API call should trigger refresh"
+            );
+            Logger.timer.log(
+                "🍪",
+                "Current cookies before expiration:",
+                document.cookie
+            );
+        }, 295000); // 4 minutes 55 seconds
+
+        return () => clearTimeout(warningTimer);
+    }, []);
+
     // ---------- bootstrap ----------
     useEffect(() => {
         let ignore = false;
         (async () => {
+            const bootstrapStart = performance.now();
             try {
-                const user = await getMe(); // if 401, your route should redirect
+                Logger.api.log("🚀", "Starting app bootstrap...");
+
+                // Use trackRequest to prevent duplicate calls in React StrictMode
+                const user = await trackRequest("bootstrap-getMe", () =>
+                    getMe()
+                );
                 if (ignore) return;
+                const userTime = Math.round(performance.now() - bootstrapStart);
+                Logger.api.log(
+                    "✅",
+                    "getMe() successful:",
+                    user,
+                    `(${userTime}ms)`
+                );
                 setMe(user);
 
-                const convs = await listConversations();
+                const convs = await trackRequest(
+                    "bootstrap-listConversations",
+                    () => listConversations()
+                );
                 if (ignore) return;
+                const convsTime = Math.round(
+                    performance.now() - bootstrapStart
+                );
+                Logger.api.log(
+                    "✅",
+                    "listConversations() successful:",
+                    convs.length,
+                    "conversations",
+                    `(${convsTime}ms total)`
+                );
                 setConversations(convs);
 
                 if (!activeId && convs.length) {
                     setActiveId(convs[0]!.id);
                 }
+
+                const totalBootstrapTime = Math.round(
+                    performance.now() - bootstrapStart
+                );
+                Logger.api.log(
+                    "🎉",
+                    `Bootstrap complete in ${totalBootstrapTime}ms`
+                );
             } catch (e) {
-                console.error("bootstrap error:", e);
+                const errorTime = Math.round(
+                    performance.now() - bootstrapStart
+                );
+                Logger.api.error(
+                    "❌",
+                    "Bootstrap error:",
+                    e,
+                    `(after ${errorTime}ms)`
+                );
+                // If bootstrap fails, it might be due to expired tokens
+                // The user should be redirected to login by the error handling
             }
         })();
         return () => {
@@ -170,31 +246,75 @@ export default function HomePageClient() {
     useEffect(() => {
         if (!activeId) return;
 
+        Logger.request.log(
+            `🔄`,
+            `useEffect triggered for activeId: ${activeId}`
+        );
+
         // join only once
         if (!joinedRoomsRef.current.has(activeId)) {
             joinedRoomsRef.current.add(activeId);
             socket.emit("room:join", { roomId: activeId });
+            Logger.socket.log(`🏠`, `Joined room: ${activeId}`);
         }
 
-        // Load messages for this conversation if we don't have them
+        // Load messages for this conversation if we don't have them and aren't already loading
         const hasMessages =
             messagesByRoom[activeId] && messagesByRoom[activeId].length > 0;
-        if (!hasMessages) {
-            listMessages(activeId)
+        const isLoading = loadingRoomsRef.current.has(activeId);
+        const alreadyLoaded = loadedRoomsRef.current.has(activeId);
+
+        Logger.request.log(`📊`, `Message loading state for ${activeId}:`, {
+            hasMessages,
+            isLoading,
+            alreadyLoaded,
+            messageCount: messagesByRoom[activeId]?.length || 0
+        });
+
+        // Only load if we don't have messages AND we haven't already loaded for this room
+        if (!hasMessages && !isLoading && !alreadyLoaded) {
+            Logger.request.log(
+                `📥`,
+                `Initial loading messages for room: ${activeId}`
+            );
+            loadingRoomsRef.current.add(activeId);
+
+            // Use trackRequest to prevent duplicate calls during React StrictMode
+            // Use consistent key for both initial and "load older" requests
+            trackRequest(`messages-${activeId}`, () => listMessages(activeId))
                 .then((messages) => {
+                    Logger.api.log(
+                        `✅`,
+                        `Initial loaded ${messages.length} messages for room: ${activeId}`
+                    );
                     setMessagesByRoom((m) => ({
                         ...m,
                         [activeId]: messages
                     }));
+                    loadedRoomsRef.current.add(activeId);
                 })
                 .catch((error) => {
-                    console.error(
+                    Logger.api.error(
+                        "❌",
                         "Failed to load messages for room:",
                         activeId,
                         error
                     );
+                })
+                .finally(() => {
+                    loadingRoomsRef.current.delete(activeId);
                 });
+        } else if (hasMessages) {
+            Logger.request.log(
+                `📋`,
+                `Using cached messages for room: ${activeId} (${messagesByRoom[activeId]?.length} messages)`
+            );
         }
+
+        // Cleanup function to handle activeId changes
+        return () => {
+            // Don't clean up loading state here as it might interrupt valid requests
+        };
     }, [activeId, socket]);
 
     // ---------- handlers for ChatView ----------
@@ -243,22 +363,40 @@ export default function HomePageClient() {
         if (!activeId || loadingOlder) return;
         setLoadingOlder(true);
         try {
-            // Load more messages using REST API with higher limit
-            const olderMessages = await listMessages(activeId);
+            // Use trackRequest to prevent duplicate calls and get cached results
+            // Use the same key as initial loading to share the same request
+            const olderMessages = await trackRequest(
+                `messages-${activeId}`,
+                () => listMessages(activeId)
+            );
+
+            // For now, this replaces all messages (same as initial load)
+            // TODO: Implement proper pagination with cursor-based loading
             setMessagesByRoom((m) => ({
                 ...m,
                 [activeId]: olderMessages
             }));
+
+            Logger.api.log(
+                "📄",
+                `Loaded ${olderMessages.length} messages for "Load Older" in room: ${activeId}`
+            );
         } catch (error) {
-            console.error("Failed to load older messages:", error);
+            Logger.api.error("❌", "Failed to load older messages:", error);
         } finally {
             setLoadingOlder(false);
         }
     }
 
     async function startDmByUsername(username: string) {
-        const { id } = await startDm(username);
-        const convs = await listConversations();
+        // Use trackRequest to prevent duplicate calls
+        const { id } = await trackRequest(`startDm-${username}`, () =>
+            startDm(username)
+        );
+        const convs = await trackRequest(
+            `refresh-conversations-${Date.now()}`,
+            () => listConversations()
+        );
         setConversations(convs);
         setActiveId(id);
         socket.emit("room:join", { roomId: id });

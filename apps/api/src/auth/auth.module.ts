@@ -16,7 +16,7 @@ import { JwtHttpGuard } from './jwt-http.guard';
       useFactory: (cfg: ConfigService) => ({
         secret: cfg.get<string>('JWT_ACCESS_SECRET', { infer: true }),
         signOptions: {
-          expiresIn: cfg.get<string>('JWT_ACCESS_EXPIRES') ?? '1h',
+          expiresIn: cfg.get<string>('JWT_ACCESS_EXPIRES') ?? '5m', // 5 minutes for testing to eliminate race conditions
 
           // issuer: cfg.get<string>('JWT_ISSUER') ?? undefined,
           // audience: cfg.get<string>('JWT_AUDIENCE') ?? undefined,

@@ -44,9 +44,13 @@ export default function LoginPage() {
                             start(async () => {
                                 try {
                                     await loginAction({ username, password });
-                                    router.replace("/");
+                                    // Force a full page reload instead of client navigation
+                                    window.location.href = "/";
                                 } catch (e: any) {
-                                    setErr(e.message);
+                                    // NEXT_REDIRECT is expected when redirect() is called
+                                    if (e.message !== "NEXT_REDIRECT") {
+                                        setErr(e.message);
+                                    }
                                 }
                             })
                         }

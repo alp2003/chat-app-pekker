@@ -1,6 +1,13 @@
 import "./globals.css";
 import type { Metadata } from "next";
-export const metadata: Metadata = { title: "Chat App", description: "…" };
+
+export const metadata: Metadata = {
+    title: "Chat App",
+    description: "Modern live chat application",
+    icons: {
+        icon: "/favicon.ico"
+    }
+};
 
 export default function RootLayout({
     children

@@ -1,9 +1,14 @@
 import SocketProviderShell from "./SocketProviderShell";
+import TokenRefreshWrapper from "@/components/TokenRefreshWrapper";
 
 export default function ProtectedLayout({
     children
 }: {
     children: React.ReactNode;
 }) {
-    return <SocketProviderShell>{children}</SocketProviderShell>;
+    return (
+        <TokenRefreshWrapper>
+            <SocketProviderShell>{children}</SocketProviderShell>
+        </TokenRefreshWrapper>
+    );
 }

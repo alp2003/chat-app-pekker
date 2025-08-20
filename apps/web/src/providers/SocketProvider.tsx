@@ -58,6 +58,12 @@ export default function SocketProvider({
     const [authToken, setAuthToken] = useState(initialToken);
     const prevTokenRef = useRef(authToken);
 
+    console.log("🔌 SocketProvider init:", {
+        cookieName,
+        hasToken: !!initialToken,
+        tokenPreview: initialToken?.slice(-10)
+    });
+
     // if the prop token appears later (SSR → CSR), sync once
     useEffect(() => {
         if (token && token !== authToken) setAuthToken(token);
@@ -70,10 +76,14 @@ export default function SocketProvider({
     const socket = useMemo(() => {
         // Dev HMR: reuse singleton to avoid multi-connect storms
         if (process.env.NODE_ENV !== "production" && _socketSingleton) {
+            console.log(
+                "🔄 Reusing existing socket singleton, updating auth token"
+            );
             _socketSingleton.auth = { token: authToken };
             return _socketSingleton;
         }
 
+        console.log("🆕 Creating new socket instance with URL:", url);
         const s = io(url, {
             autoConnect: false,
             transports: ["websocket"], // prefer WS
@@ -98,7 +108,10 @@ export default function SocketProvider({
             s.on("reconnect", (n) => console.log("[socket] reconnected", n));
         }
 
-        if (process.env.NODE_ENV !== "production") _socketSingleton = s;
+        if (process.env.NODE_ENV !== "production") {
+            console.log("💾 Storing socket as singleton");
+            _socketSingleton = s;
+        }
         return s;
         // only create when URL changes; token handling is below
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -112,20 +125,28 @@ export default function SocketProvider({
 
         // Handle unauthorized (expired or invalid access token)
         const onConnectError = async (err: any) => {
+            console.log("🔌 Socket connect error:", err?.message, err?.data);
             const msg = (err?.message || "").toLowerCase();
             if (
                 msg.includes("unauthorized") ||
                 msg.includes("jwt") ||
                 err?.data === "unauthorized"
             ) {
+                console.log("🔄 Socket auth expired, attempting refresh...");
                 // allow app to refresh the token (client or server action)
                 if (onAuthExpired) await onAuthExpired();
                 // grab new cookie token and retry once
                 const fresh = getCookie(cookieName);
+                console.log("🍪 Fresh token after refresh:", {
+                    hasFresh: !!fresh,
+                    changed: fresh !== authToken,
+                    tokenPreview: fresh?.slice(-10)
+                });
                 if (fresh && fresh !== authToken) {
                     socket.auth = { token: fresh };
                     prevTokenRef.current = fresh;
                     setAuthToken(fresh);
+                    console.log("🔄 Reconnecting socket with new token...");
                     if (!socket.connected) socket.connect();
                 }
             }
@@ -142,10 +163,18 @@ export default function SocketProvider({
             socket.off("connect", onConnect);
             socket.off("disconnect", onDisconnect);
             socket.off("connect_error", onConnectError);
+
+            console.log("🧹 Cleaning up socket listeners");
             if (process.env.NODE_ENV === "production") {
                 socket.disconnect();
             } else {
-                socket.emit("app:leaving");
+                // In development, only disconnect if this is not the singleton
+                if (socket !== _socketSingleton) {
+                    console.log("🧹 Disconnecting non-singleton socket");
+                    socket.disconnect();
+                } else {
+                    socket.emit("app:leaving");
+                }
             }
         };
     }, [socket, authToken, cookieName, onAuthExpired]);
@@ -154,15 +183,35 @@ export default function SocketProvider({
     useEffect(() => {
         const prev = prevTokenRef.current;
         if (authToken && authToken !== prev) {
+            console.log("🔄 Token changed, updating socket auth:", {
+                hadPrev: !!prev,
+                newTokenPreview: authToken?.slice(-10)
+            });
             socket.auth = { token: authToken };
             // only reconnect if already connected (prevents double connect on mount)
             if (socket.connected) {
+                console.log("🔄 Disconnecting and reconnecting socket...");
                 socket.disconnect();
                 socket.connect();
             }
             prevTokenRef.current = authToken;
         }
     }, [authToken, socket]);
+
+    // Periodic check for cookie changes (backup for token refresh)
+    useEffect(() => {
+        const interval = setInterval(() => {
+            const currentCookie = getCookie(cookieName);
+            if (currentCookie && currentCookie !== authToken) {
+                console.log("🍪 Detected cookie change, updating token:", {
+                    newTokenPreview: currentCookie?.slice(-10)
+                });
+                setAuthToken(currentCookie);
+            }
+        }, 1000); // Check every second
+
+        return () => clearInterval(interval);
+    }, [authToken, cookieName]);
 
     return (
         <SocketCtx.Provider value={{ socket, connected }}>

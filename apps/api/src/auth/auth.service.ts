@@ -9,6 +9,14 @@ import { PrismaService } from 'src/prisma.service';
 import * as argon2 from 'argon2';
 import { add } from 'date-fns';
 
+// Fast argon2 settings for development
+const getArgonOptions = (isDev: boolean) => ({
+  type: argon2.argon2id,
+  memoryCost: isDev ? 2 ** 12 : 2 ** 16, // 4MB vs 64MB
+  timeCost: isDev ? 2 : 3, // 2 vs 3 iterations
+  parallelism: isDev ? 1 : 1, // 1 thread
+});
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -27,9 +35,9 @@ export class AuthService {
       where: { username: username },
     });
     if (exists) throw new BadRequestException('username_taken');
-    const passwordHash = await argon2.hash(input.password, {
-      type: argon2.argon2id,
-    });
+    const isDev = this.configService.get('NODE_ENV') !== 'production';
+    const argonOpts = getArgonOptions(isDev);
+    const passwordHash = await argon2.hash(input.password, argonOpts);
     const user = await this.prisma.user.create({
       data: {
         username: username,
@@ -76,7 +84,9 @@ export class AuthService {
   ) {
     const access = await this.signAccess(user);
     const refresh = await this.signRefresh(user);
-    const refreshHash = await argon2.hash(refresh, { type: argon2.argon2id });
+    const isDev = this.configService.get('NODE_ENV') !== 'production';
+    const argonOpts = getArgonOptions(isDev);
+    const refreshHash = await argon2.hash(refresh, argonOpts);
 
     const expiresAt = add(new Date(), { days: 30 });
     await this.prisma.session.create({
@@ -98,19 +108,43 @@ export class AuthService {
     ua?: string,
     ip?: string,
   ) {
+    const start = Date.now();
     // simple rotation (revoke old, create new)
+    // AGGRESSIVE: Only check the 3 most recent sessions to speed up token refresh
     const sessions = await this.prisma.session.findMany({
-      where: { userId, revokedAt: null },
+      where: {
+        userId,
+        revokedAt: null,
+      },
+      orderBy: { createdAt: 'desc' }, // Check newest first
+      take: 3, // Only check 3 most recent sessions
     });
+    console.log(
+      '🔍 Found',
+      sessions.length,
+      'recent sessions to check (limited to 3)',
+      `(${Date.now() - start}ms)`,
+    );
+
     let matched: string | null = null;
 
+    const verifyStart = Date.now();
+    const isDev = this.configService.get('NODE_ENV') !== 'production';
+    const argonOpts = getArgonOptions(isDev);
+
     for (const s of sessions) {
+      // argon2.verify doesn't accept options, but it will still be faster due to the hashed value being created with faster settings
       const ok = await argon2.verify(s.refreshTokenHash, oldRefresh);
       if (ok) {
         matched = s.id;
         break;
       }
     }
+    console.log(
+      '🔐 Argon2 verification completed',
+      `(${Date.now() - verifyStart}ms)`,
+    );
+
     if (!matched) throw new UnauthorizedException('invalid_refresh');
 
     await this.prisma.session.update({
@@ -118,11 +152,17 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
 
+    const tokenStart = Date.now();
     const access = await this.signAccess({ id: userId, username: '' });
     const refresh = await this.signRefresh({ id: userId });
-    const refreshHash = await argon2.hash(refresh, { type: argon2.argon2id });
+    const refreshHash = await argon2.hash(refresh, argonOpts);
+    console.log(
+      '🔑 Token generation + hashing',
+      `(${Date.now() - tokenStart}ms)`,
+    );
 
     const expiresAt = add(new Date(), { days: 30 });
+    const dbStart = Date.now();
     await this.prisma.session.create({
       data: {
         userId,
@@ -132,6 +172,8 @@ export class AuthService {
         expiresAt,
       },
     });
+    console.log('💾 Database session create', `(${Date.now() - dbStart}ms)`);
+    console.log('✅ Total rotateRefresh time:', `(${Date.now() - start}ms)`);
 
     return { access, refresh };
   }

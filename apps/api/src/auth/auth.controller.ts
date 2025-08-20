@@ -62,14 +62,14 @@ export class AuthController {
       sameSite: 'lax',
       secure: this.cfg.get('NODE_ENV') === 'production',
       maxAge: 1000 * 60 * 60 * 24 * 30, // 30d
-      path: '/auth',
+      path: '/',
     });
 
     res.cookie('access', access, {
       httpOnly: true,
       sameSite: 'lax',
       secure: this.cfg.get('NODE_ENV') === 'production',
-      maxAge: 1000 * 60 * 60, // 1 hour
+      maxAge: 1000 * 300, // 5 minutes for testing to eliminate race conditions
       path: '/',
     });
 
@@ -87,15 +87,21 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
+    console.log('🔄 Backend refresh endpoint called');
     const token = (req.cookies?.refresh as string) || '';
     if (!token) {
+      console.log('❌ No refresh token found in cookies');
       return { error: 'no_refresh_token' };
     }
+
+    console.log('🍪 Backend received refresh token:', token.slice(-20));
 
     try {
       // Use proper JWT verification instead of manual parsing
       const payload = await this.auth.verifyRefresh(token);
       const userId = payload.sub;
+
+      console.log('✅ Refresh token valid for user:', userId);
 
       const { access, refresh } = await this.auth.rotateRefresh(
         userId,
@@ -104,24 +110,31 @@ export class AuthController {
         req.ip,
       );
 
+      console.log('🔄 New tokens generated, setting cookies...');
+
       res.cookie('refresh', refresh, {
         httpOnly: true,
         sameSite: 'lax',
         secure: this.cfg.get('NODE_ENV') === 'production',
         maxAge: 1000 * 60 * 60 * 24 * 30,
-        path: '/auth',
+        path: '/',
       });
 
       res.cookie('access', access, {
         httpOnly: true,
         sameSite: 'lax',
         secure: this.cfg.get('NODE_ENV') === 'production',
-        maxAge: 1000 * 60 * 60, // 1 hour
+        maxAge: 1000 * 300, // 5 minutes for testing to eliminate race conditions
         path: '/',
       });
 
+      console.log('✅ Cookies set successfully');
       return { ok: true };
     } catch (error) {
+      console.log(
+        '❌ Refresh token validation failed:',
+        error instanceof Error ? error.message : error,
+      );
       return { error: 'invalid_refresh_token' };
     }
   }
@@ -136,7 +149,7 @@ export class AuthController {
       const { sub: userId } = payload as { sub?: string };
       if (userId) await this.auth.logout(userId, token);
     } catch {}
-    res.clearCookie('refresh', { path: '/auth' });
+    res.clearCookie('refresh', { path: '/' });
     res.clearCookie('access', { path: '/' });
     return { ok: true };
   }

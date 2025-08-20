@@ -4,15 +4,27 @@ import { ACCESS_COOKIE } from "@/lib/auth";
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 export async function POST(req: NextRequest) {
+    const start = performance.now();
+    console.log("🔄 Refresh API route called");
+
+    const cookieHeader = req.headers.get("cookie") || "";
+
     // Forward the refresh request to the backend
     const response = await fetch(`${API}/auth/refresh`, {
         method: "POST",
         credentials: "include" as any,
         headers: {
-            // Forward cookies from the request
-            cookie: req.headers.get("cookie") || ""
+            cookie: cookieHeader
         }
     });
+
+    const backendTime = Math.round(performance.now() - start);
+    console.log(
+        "🔄 Backend refresh response:",
+        response.status,
+        response.statusText,
+        `(${backendTime}ms)`
+    );
 
     // Get the response data
     const responseData = await response.text();
@@ -25,7 +37,6 @@ export async function POST(req: NextRequest) {
 
     // Forward all headers from the backend response
     response.headers.forEach((value, key) => {
-        // Skip the set-cookie header, we'll handle it manually
         if (key.toLowerCase() !== "set-cookie") {
             nextResponse.headers.set(key, value);
         }
@@ -34,13 +45,38 @@ export async function POST(req: NextRequest) {
     // Handle cookies manually to also set the non-httpOnly cookie for Socket.io
     if (response.ok) {
         const setCookieHeaders = response.headers.getSetCookie();
+        console.log("🍪 Setting", setCookieHeaders.length, "cookies...");
 
-        // Forward all Set-Cookie headers
+        // Parse and set each cookie - optimized version
         setCookieHeaders.forEach((cookieHeader) => {
-            nextResponse.headers.append("Set-Cookie", cookieHeader);
+            const [nameValue, ...attributes] = cookieHeader.split(";");
+            if (!nameValue) return;
+
+            const [name, value] = nameValue.split("=");
+            if (!name || !value) return;
+
+            // Simplified cookie options
+            const cookieOptions: any = {
+                httpOnly: true,
+                sameSite: "lax" as const,
+                secure: process.env.NODE_ENV === "production",
+                path: "/"
+            };
+
+            // Only parse essential attributes
+            attributes.forEach((attr) => {
+                const [attrName, attrValue] = attr.trim().split("=");
+                if (attrName?.toLowerCase() === "max-age" && attrValue) {
+                    cookieOptions.maxAge = parseInt(attrValue);
+                } else if (attrName?.toLowerCase() === "expires" && attrValue) {
+                    cookieOptions.expires = new Date(attrValue);
+                }
+            });
+
+            nextResponse.cookies.set(name.trim(), value.trim(), cookieOptions);
         });
 
-        // Extract the access token and also set a non-httpOnly version for Socket.io
+        // Set the non-httpOnly access token for Socket.io
         const accessCookie = setCookieHeaders.find((cookie) =>
             cookie.startsWith("access=")
         );
@@ -49,16 +85,18 @@ export async function POST(req: NextRequest) {
             const accessToken = tokenMatch?.[1];
 
             if (accessToken) {
-                // Set a non-httpOnly cookie for client-side access (Socket.io authentication)
-                nextResponse.cookies.set(ACCESS_COOKIE, accessToken, {
+                nextResponse.cookies.set("u_token", accessToken, {
                     httpOnly: false,
                     sameSite: "lax",
                     secure: process.env.NODE_ENV === "production",
                     path: "/",
-                    maxAge: 3600 // 1 hour for better UX
+                    maxAge: 300
                 });
             }
         }
+
+        const totalTime = Math.round(performance.now() - start);
+        console.log("✅ Refresh complete", `(${totalTime}ms total)`);
     }
 
     return nextResponse;

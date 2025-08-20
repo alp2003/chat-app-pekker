@@ -14,12 +14,12 @@ export async function refreshAction() {
     if (!res.ok) return false;
     const { access } = await res.json();
     if (access) {
-        (await cookies()).set(ACCESS_COOKIE, access, {
-            httpOnly: false,
+        (await cookies()).set("u_token", access, {
+            httpOnly: false, // Non-httpOnly for client-side Socket.IO access
             sameSite: "lax",
             secure: process.env.NODE_ENV === "production",
             path: "/",
-            maxAge: 3600 // 1 hour
+            maxAge: 300 // 5 minutes for testing to eliminate race conditions
         });
         return true;
     }

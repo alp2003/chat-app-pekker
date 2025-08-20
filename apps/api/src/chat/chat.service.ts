@@ -6,11 +6,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { CacheService } from '../common/cache.service';
 import { MessageIn } from 'shared/dto';
 
 @Injectable()
 export class ChatService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+  ) {}
 
   // ---------- USERS ----------
   /**
@@ -104,6 +108,16 @@ export class ChatService {
   }
 
   async listConversations(userId: string) {
+    // Try cache first
+    const cached = await this.cache.getCachedConversations(userId);
+    if (cached) {
+      console.log(`📖 Cache hit for conversations: ${userId}`);
+      return cached;
+    }
+
+    console.log(
+      `💾 Cache miss for conversations: ${userId} - querying database`,
+    );
     const memberships = await this.prisma.membership.findMany({
       where: { userId },
       include: {
@@ -150,11 +164,29 @@ export class ChatService {
       };
     });
 
+    // Cache for 5 minutes
+    await this.cache.cacheConversations(userId, conversations, 300);
+
     return conversations;
   }
   // ---------- MESSAGES ----------
   async getMessages(userId: string, roomId: string, opts?: { limit?: number }) {
     const take = Math.min(Math.max(opts?.limit ?? 3000, 1), 5000);
+    const page = 0; // For now we only support page 0, but this could be extended for pagination
+
+    // Try cache first (for smaller result sets)
+    if (take <= 5000) {
+      // Only cache reasonably sized result sets
+      const cached = await this.cache.getCachedMessages(roomId, page);
+      if (cached) {
+        console.log(`📖 Cache hit for messages: ${roomId} (limit: ${take})`);
+        return cached.slice(0, take); // Return only requested amount
+      }
+    }
+
+    console.log(
+      `💾 Cache miss for messages: ${roomId} (limit: ${take}) - querying database`,
+    );
 
     // Get the most recent messages first (desc), then reverse to show oldest first
     const messages = await this.prisma.message.findMany({
@@ -173,7 +205,7 @@ export class ChatService {
 
     // Reverse to get chronological order (oldest first)
     // Transform the data to match frontend expectations
-    return messages.reverse().map((msg) => ({
+    const transformedMessages = messages.reverse().map((msg) => ({
       id: msg.id,
       roomId: msg.roomId,
       userId: msg.senderId, // ← Map senderId to userId for frontend
@@ -182,6 +214,13 @@ export class ChatService {
       clientMsgId: msg.clientMsgId,
       replyToId: msg.replyToId,
     }));
+
+    // Cache for smaller result sets (3 minutes)
+    if (take <= 5000) {
+      await this.cache.cacheMessages(roomId, transformedMessages, page, 180);
+    }
+
+    return transformedMessages;
   }
 
   async saveMessage(input: {
@@ -218,7 +257,7 @@ export class ChatService {
     }
 
     // Transform to match frontend expectations
-    return {
+    const transformedMessage = {
       id: saved.id,
       roomId: saved.roomId,
       userId: saved.senderId, // ← Map senderId to userId for frontend
@@ -227,6 +266,16 @@ export class ChatService {
       clientMsgId: saved.clientMsgId,
       replyToId: saved.replyToId,
     };
+
+    // Invalidate caches since we have new message
+    await Promise.all([
+      // Invalidate messages cache for this room
+      this.cache.invalidateMessages(saved.roomId),
+      // Invalidate conversations cache for all members (since last message changed)
+      this.invalidateConversationsForRoom(saved.roomId),
+    ]);
+
+    return transformedMessage;
   }
 
   async getOrCreateDmByUsername(meId: string, otherUsername: string) {
@@ -281,7 +330,30 @@ export class ChatService {
     return this.prisma.message.findMany({
       where: { roomId },
       orderBy: { createdAt: 'asc' },
-      take: 3000,
+      take: 5000,
     });
+  }
+
+  // Helper method to invalidate conversations cache for all members of a room
+  private async invalidateConversationsForRoom(roomId: string) {
+    try {
+      // Get all members of the room
+      const members = await this.prisma.membership.findMany({
+        where: { roomId },
+        select: { userId: true },
+      });
+
+      // Invalidate conversations cache for each member
+      const invalidationPromises = members.map((member) =>
+        this.cache.invalidateConversations(member.userId),
+      );
+
+      await Promise.all(invalidationPromises);
+      console.log(
+        `🗑️ Invalidated conversations cache for ${members.length} room members`,
+      );
+    } catch (error) {
+      console.error('Error invalidating conversations cache:', error);
+    }
   }
 }
