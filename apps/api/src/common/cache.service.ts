@@ -6,13 +6,20 @@ import { createClient, RedisClientType } from 'redis';
 export class CacheService implements OnModuleInit, OnModuleDestroy {
   private client: RedisClientType | undefined;
   private readonly defaultTtl = 300; // 5 minutes
+  private invalidationQueue = new Map<string, NodeJS.Timeout>();
 
   constructor(private readonly configService: ConfigService) {}
 
   async onModuleInit() {
     const redisUrl = this.configService.get<string>('app.redisUrl');
     if (redisUrl) {
-      this.client = createClient({ url: redisUrl });
+      this.client = createClient({
+        url: redisUrl,
+        socket: {
+          reconnectStrategy: (retries) => Math.min(retries * 50, 1000),
+          connectTimeout: 10000,
+        },
+      });
 
       this.client.on('error', (err) => {
         console.error('Redis Client Error:', err);
@@ -29,6 +36,12 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy() {
+    // Clear all pending invalidation timers
+    for (const timeout of this.invalidationQueue.values()) {
+      clearTimeout(timeout);
+    }
+    this.invalidationQueue.clear();
+
     if (this.client) {
       await this.client.quit();
     }
@@ -133,7 +146,22 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   }
 
   async invalidateConversations(userId: string): Promise<boolean> {
-    return this.del(this.getConversationsCacheKey(userId));
+    const key = `conversations:${userId}`;
+
+    // Debounce rapid invalidations for the same key
+    if (this.invalidationQueue.has(key)) {
+      clearTimeout(this.invalidationQueue.get(key)!);
+    }
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(async () => {
+        this.invalidationQueue.delete(key);
+        const result = await this.del(this.getConversationsCacheKey(userId));
+        resolve(result);
+      }, 100); // 100ms debounce
+
+      this.invalidationQueue.set(key, timeout);
+    });
   }
 
   async cacheMessages(
@@ -157,22 +185,40 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   }
 
   async invalidateMessages(conversationId: string): Promise<boolean> {
-    // Invalidate all pages for this conversation
-    const pattern = `messages:${conversationId}:page:*`;
-    if (!this.isEnabled() || !this.client) return false;
+    const key = `messages:${conversationId}`;
 
-    try {
-      const keys = await this.client.keys(pattern);
-      if (keys.length > 0) {
-        await this.client.del(keys);
-        console.log(
-          `🗑️ Invalidated ${keys.length} message cache entries for conversation: ${conversationId}`,
-        );
-      }
-      return true;
-    } catch (error) {
-      console.error('Redis invalidateMessages error:', error);
-      return false;
+    // Debounce rapid invalidations for the same conversation
+    if (this.invalidationQueue.has(key)) {
+      clearTimeout(this.invalidationQueue.get(key)!);
     }
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(async () => {
+        this.invalidationQueue.delete(key);
+
+        // Invalidate all pages for this conversation
+        const pattern = `messages:${conversationId}:page:*`;
+        if (!this.isEnabled() || !this.client) {
+          resolve(false);
+          return;
+        }
+
+        try {
+          const keys = await this.client.keys(pattern);
+          if (keys.length > 0) {
+            await this.client.del(keys);
+            console.log(
+              `🗑️ Invalidated ${keys.length} message cache entries for conversation: ${conversationId}`,
+            );
+          }
+          resolve(true);
+        } catch (error) {
+          console.error('Redis invalidateMessages error:', error);
+          resolve(false);
+        }
+      }, 100); // 100ms debounce
+
+      this.invalidationQueue.set(key, timeout);
+    });
   }
 }

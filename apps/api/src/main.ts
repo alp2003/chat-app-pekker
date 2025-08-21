@@ -18,7 +18,13 @@ async function bootstrap() {
 
   const redisUrl = configService.get<string>('app.redisUrl');
   if (redisUrl) {
-    const pubClient = createClient({ url: redisUrl });
+    const pubClient = createClient({
+      url: redisUrl,
+      socket: {
+        reconnectStrategy: (retries) => Math.min(retries * 50, 1000),
+        connectTimeout: 10000,
+      },
+    });
     const subClient = pubClient.duplicate();
     await pubClient.connect();
     await subClient.connect();

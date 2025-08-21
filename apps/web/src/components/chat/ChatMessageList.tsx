@@ -113,7 +113,10 @@ export default function ChatMessageList({
 
     // Function to perform the scroll
     const performScrollToBottom = (reason: string) => {
-        console.log(`📍 ${reason} for conversation:`, conversationKey);
+        console.log(
+            `� SCROLL TRIGGERED: ${reason} for conversation:`,
+            conversationKey
+        );
         console.log("📍 vRef.current exists:", !!vRef.current);
         console.log(
             "📍 messageItems.length:",
@@ -174,6 +177,7 @@ export default function ChatMessageList({
         ) {
             lastForceScrollRef.current = forceScrollToBottom;
             if (messages.length > 0) {
+                console.log("🚨 FORCE SCROLL triggered!", forceScrollToBottom);
                 performScrollToBottom("Force scroll");
             }
         }
@@ -185,7 +189,7 @@ export default function ChatMessageList({
             lastConversationKeyRef.current !== conversationKey;
         lastConversationKeyRef.current = conversationKey;
 
-        console.log("🔄 ChatMessageList useLayoutEffect:", {
+        console.log("🔄 ChatMessageList conversation useLayoutEffect:", {
             conversationKey,
             conversationChanged,
             hasScrolledForCurrentConversation:
@@ -201,18 +205,24 @@ export default function ChatMessageList({
             hasScrolledForCurrentConversation.current = false;
             lastCountRef.current = messages.length;
             setUnseen(0);
-        }
 
-        // Scroll to bottom if we have messages and (haven't scrolled for this conversation yet OR conversation changed)
-        if (
-            messages.length > 0 &&
-            (!hasScrolledForCurrentConversation.current || conversationChanged)
+            // Only scroll on actual conversation change, not message length change
+            if (messages.length > 0) {
+                console.log("🚨 CONVERSATION CHANGE - scrolling to bottom");
+                hasScrolledForCurrentConversation.current = true;
+                performScrollToBottom("Conversation change scroll");
+            }
+        } else if (
+            !hasScrolledForCurrentConversation.current &&
+            messages.length > 0
         ) {
+            // First time loading messages for this conversation
+            console.log("🚨 INITIAL CONVERSATION LOAD - scrolling to bottom");
             hasScrolledForCurrentConversation.current = true;
-            performScrollToBottom("Conversation change scroll");
+            performScrollToBottom("Initial conversation scroll");
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [conversationKey, messages.length]);
+    }, [conversationKey]); // REMOVED messages.length from dependency array
 
     // Auto-scroll on new messages
     useEffect(() => {
@@ -223,7 +233,24 @@ export default function ChatMessageList({
         const last = messages[curr - 1];
         const mine = last?.userId === me;
 
+        console.log("📨 New message detected:", {
+            mine,
+            atBottom,
+            unseen,
+            messageContent: last?.content?.substring(0, 20) + "...",
+            shouldAutoScroll: mine || atBottom,
+            willShowJumpButton: !mine && !atBottom,
+            userId: last?.userId,
+            myId: me
+        });
+
+        // Auto-scroll for your own messages OR when you're at bottom
+        // Jump button only shows for other users' messages when you're scrolled up
         if (mine || atBottom) {
+            console.log(
+                "🔄 Auto-scrolling to new message - Reason:",
+                mine ? "MY MESSAGE" : "AT BOTTOM"
+            );
             requestAnimationFrame(() => {
                 requestAnimationFrame(() => {
                     // ↓ reliably reach the last bubble
@@ -232,6 +259,8 @@ export default function ChatMessageList({
             });
             setUnseen(0);
         } else {
+            // Other user's message while you're scrolled up - show jump button
+            console.log("🔔 Showing jump button for new message");
             setUnseen((u) => u + (curr - prev));
         }
 
@@ -276,7 +305,12 @@ export default function ChatMessageList({
                     if (item.type === "dateSeparator") {
                         return `date-${item.date}`;
                     }
-                    return item.message.id ?? String(item.index);
+                    // Use clientMsgId for stable React keys (prevents duplicate key errors)
+                    return (
+                        item.message.clientMsgId ??
+                        item.message.id ??
+                        String(item.index)
+                    );
                 }}
                 itemContent={(i, item) => {
                     if (item.type === "dateSeparator") {
@@ -304,18 +338,20 @@ export default function ChatMessageList({
                 }}
             />
 
+            {/* Jump button - only shows when new messages arrive while scrolled up */}
             {unseen > 0 && !atBottom && (
                 <button
                     onClick={() => {
-                        // ↓ same hard jump
+                        // Jump to the new messages
                         vRef.current?.scrollTo({
                             top: 1e9,
-                            behavior: "instant"
+                            behavior: "smooth"
                         });
                         setUnseen(0);
                     }}
                     className="pointer-events-auto absolute bottom-16 left-1/2 -translate-x-1/2 rounded-full
-                     bg-slate-400 px-3 py-1 text-xs text-white shadow hover:bg-slate-500 transition"
+                     bg-blue-500 px-3 py-1.5 text-sm text-white shadow-lg hover:bg-blue-600 transition-all duration-200"
+                    title="Jump to new messages"
                 >
                     {unseen} new message{unseen > 1 ? "s" : ""} • Jump
                 </button>

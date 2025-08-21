@@ -101,6 +101,16 @@ export function DesktopSidebar({
 }) {
     const [searchQuery, setSearchQuery] = useState("");
 
+    // Debug conversations updates
+    console.log(
+        "🎨 DesktopSidebar rendering with convos:",
+        convos.map((c) => ({
+            id: c.id,
+            name: c.name,
+            last: c.last
+        }))
+    );
+
     // Filter conversations based on search query (like WhatsApp)
     const filteredConvos = useMemo(() => {
         if (!searchQuery.trim()) return convos;
