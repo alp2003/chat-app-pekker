@@ -60,6 +60,8 @@ interface ChatActions {
     _addMessage: (message: Message) => void;
     _updateConversationPreview: (roomId: string, content: string) => void;
     _updateAllConversationPreviews: () => void;
+    _incrementUnreadCount: (roomId: string) => void;
+    _clearUnreadCount: (roomId: string) => void;
     _updateMessage: (
         roomId: string,
         messageId: string,
@@ -160,6 +162,9 @@ const useChatStore = create<ChatStore>()(
 
                 // Set active room
                 state._setActiveRoom(roomId);
+
+                // Clear unread count when selecting a conversation
+                state._clearUnreadCount(roomId);
 
                 // Join room if not already joined
                 if (!state.joinedRooms.has(roomId) && socket) {
@@ -293,9 +298,23 @@ const useChatStore = create<ChatStore>()(
                         message.roomId,
                         message.content || "[File]"
                     );
+
+                    // Only increment unread count if this is NOT the currently active conversation
+                    const isActiveConversation =
+                        afterState.activeRoomId === message.roomId;
+                    if (!isActiveConversation) {
+                        console.log(
+                            "📫 Message for inactive conversation - incrementing unread count"
+                        );
+                        get()._incrementUnreadCount(message.roomId);
+                    } else {
+                        console.log(
+                            "👁️ Message for active conversation - not incrementing unread count (user is viewing)"
+                        );
+                    }
                 } else {
                     console.log(
-                        "🚫 Message from current user - NOT updating conversation preview"
+                        "🚫 Message from current user - NOT updating conversation preview or unread count"
                     );
                 }
                 // Don't auto-scroll for incoming messages - let ChatMessageList handle it based on user position
@@ -631,6 +650,67 @@ const useChatStore = create<ChatStore>()(
                     },
                     false,
                     "addOptimisticMessage"
+                ),
+
+            _incrementUnreadCount: (roomId: string) =>
+                set(
+                    (state) => {
+                        const updatedConversations = state.conversations.map(
+                            (convo) => {
+                                if (convo.id === roomId) {
+                                    const currentUnread = convo.unread || 0;
+                                    console.log(
+                                        "📫 Incrementing unread count for:",
+                                        convo.name,
+                                        "from",
+                                        currentUnread,
+                                        "to",
+                                        currentUnread + 1
+                                    );
+                                    return {
+                                        ...convo,
+                                        unread: currentUnread + 1
+                                    };
+                                }
+                                return convo;
+                            }
+                        );
+
+                        return {
+                            conversations: updatedConversations
+                        };
+                    },
+                    false,
+                    "incrementUnreadCount"
+                ),
+
+            _clearUnreadCount: (roomId: string) =>
+                set(
+                    (state) => {
+                        const updatedConversations = state.conversations.map(
+                            (convo) => {
+                                if (convo.id === roomId && convo.unread) {
+                                    console.log(
+                                        "📬 Clearing unread count for:",
+                                        convo.name,
+                                        "was",
+                                        convo.unread
+                                    );
+                                    return {
+                                        ...convo,
+                                        unread: 0
+                                    };
+                                }
+                                return convo;
+                            }
+                        );
+
+                        return {
+                            conversations: updatedConversations
+                        };
+                    },
+                    false,
+                    "clearUnreadCount"
                 ),
 
             _triggerScrollToBottom: () =>

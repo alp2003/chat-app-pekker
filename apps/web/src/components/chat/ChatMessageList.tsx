@@ -195,10 +195,7 @@ export default function ChatMessageList({
             hasScrolledForCurrentConversation:
                 hasScrolledForCurrentConversation.current,
             messagesLength: messages.length,
-            willScroll:
-                messages.length > 0 &&
-                (!hasScrolledForCurrentConversation.current ||
-                    conversationChanged)
+            willScroll: conversationChanged && messages.length > 0
         });
 
         if (conversationChanged) {
@@ -206,23 +203,27 @@ export default function ChatMessageList({
             lastCountRef.current = messages.length;
             setUnseen(0);
 
-            // Only scroll on actual conversation change, not message length change
+            // Always scroll to bottom when conversation changes (user clicked on conversation)
             if (messages.length > 0) {
-                console.log("🚨 CONVERSATION CHANGE - scrolling to bottom");
+                console.log(
+                    "🚨 CONVERSATION CHANGE - scrolling to latest message"
+                );
                 hasScrolledForCurrentConversation.current = true;
-                performScrollToBottom("Conversation change scroll");
+                performScrollToBottom("Conversation selection scroll");
             }
         } else if (
             !hasScrolledForCurrentConversation.current &&
             messages.length > 0
         ) {
             // First time loading messages for this conversation
-            console.log("🚨 INITIAL CONVERSATION LOAD - scrolling to bottom");
+            console.log(
+                "🚨 INITIAL CONVERSATION LOAD - scrolling to latest message"
+            );
             hasScrolledForCurrentConversation.current = true;
             performScrollToBottom("Initial conversation scroll");
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [conversationKey]); // REMOVED messages.length from dependency array
+    }, [conversationKey, messages.length]); // Added messages.length back to ensure scroll happens when messages load
 
     // Auto-scroll on new messages
     useEffect(() => {
