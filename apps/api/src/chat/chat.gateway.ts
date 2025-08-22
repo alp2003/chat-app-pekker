@@ -6,6 +6,7 @@ import {
   ConnectedSocket,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
@@ -26,7 +27,9 @@ const TypingSchema = z.object({
   namespace: '/chat',
   cors: { origin: [/^http:\/\/localhost:\d+$/], credentials: true },
 })
-export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class ChatGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer() server!: Server;
   private presence = new Map<string, { userId: string; lastSeen: number }>();
 
@@ -35,6 +38,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private auth: AuthService,
     private configService: ConfigService,
   ) {}
+
+  afterInit(server: Server) {
+    console.log('🔌 ChatGateway server initialized:', !!server);
+  }
 
   async handleConnection(client: Socket) {
     try {
@@ -49,7 +56,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         `🔌 WebSocket connected: ${payload.sub} (socket: ${client.id})`,
       );
 
-      await this.chat.ensureUser(payload.sub, payload.username);
+      // Validate user exists - no automatic user creation
+      await this.chat.validateUserExists(payload.sub);
       this.presence.set(client.id, {
         userId: payload.sub,
         lastSeen: Date.now(),

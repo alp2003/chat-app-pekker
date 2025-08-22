@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { useSocket } from '@/providers/SocketProvider';
 import useChatStore from '@/stores/chatStore';
 import ChatView from '@/components/chat/ChatView';
+import NewChatButton from '@/components/chat/NewChatButton';
+import { listConversations } from '@/lib/api';
 import type { Message } from '@/lib/types/chat';
 import type { Conversation } from '@/lib/types/chat';
 
@@ -63,6 +65,14 @@ export default function CleanProtectedPageClient({
     selectRoom(id);
   };
 
+  const handleConversationCreated = async (conversationId: string) => {
+    // Select the newly created conversation
+    selectRoom(conversationId);
+
+    // The conversation will be automatically added to the list via the socket event
+    // No need for manual refresh anymore
+  };
+
   const messages = activeRoomId ? messagesByRoom[activeRoomId] || [] : [];
 
   // Get active conversation details for header
@@ -87,6 +97,9 @@ export default function CleanProtectedPageClient({
       onReact={handleReactToMessage}
       onPickImage={() => {}} // TODO: Implement file upload
       forceScrollToBottom={forceScrollToBottom}
+      sidebarTopSlot={
+        <NewChatButton onConversationCreated={handleConversationCreated} />
+      }
     />
   );
 }

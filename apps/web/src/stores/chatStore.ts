@@ -53,6 +53,13 @@ interface ChatActions {
     details?: any;
   }) => void;
   _handleRoomHistory: (payload: { roomId: string; history: Message[] }) => void;
+  _handleConversationCreated: (data: {
+    conversationId: string;
+    participants: string[];
+    type: 'dm' | 'group';
+    name?: string;
+    initiatedBy: string;
+  }) => void;
   _setActiveRoom: (roomId: string) => void;
   _addJoinedRoom: (roomId: string) => void;
   _addLoadedRoom: (roomId: string) => void;
@@ -106,9 +113,19 @@ const useChatStore = create<ChatStore>()(
             _handleMessageNack,
             _handleRoomHistory,
             _handleReactionUpdate,
+            _handleConversationCreated,
           } = get();
 
           console.log('🟢 Setting up socket listeners');
+          console.log('🔍 Socket instance:', !!socket);
+          console.log('🔍 Socket connected:', socket.connected);
+          console.log('🔍 Socket ID:', socket.id);
+
+          // Add debugging listener for all events
+          socket.onAny((eventName: string, ...args: any[]) => {
+            console.log('🎧 Socket received event:', eventName, args);
+          });
+
           socket.on('msg:new', (data: any) => {
             console.log('🟢 Socket received msg:new event:', data);
             _handleNewMessage(data);
@@ -122,6 +139,14 @@ const useChatStore = create<ChatStore>()(
           });
           socket.on('msg:react:nack', (data: any) => {
             console.error('🎭 Reaction failed:', data);
+          });
+          socket.on('conversation:created', (data: any) => {
+            console.log('🟢 New conversation created event received:', data);
+            console.log(
+              '🔍 Event data details:',
+              JSON.stringify(data, null, 2)
+            );
+            _handleConversationCreated(data);
           });
 
           // Add connection debugging
@@ -183,7 +208,7 @@ const useChatStore = create<ChatStore>()(
         if (!state.joinedRooms.has(roomId) && socket) {
           console.log('🚀 Joining room:', roomId);
           state._addJoinedRoom(roomId);
-          socket.emit('room:join', { roomId });
+          socket.emit('room:join', { id: roomId });
         } else {
           console.log(
             '🔵 Room already joined or no socket:',
@@ -381,7 +406,7 @@ const useChatStore = create<ChatStore>()(
         }
       },
 
-      _handleNewMessage: (rawMessage: Message) => {
+      _handleNewMessage: async (rawMessage: Message) => {
         console.log('🔵 _handleNewMessage called with:', rawMessage);
         const message = { ...rawMessage } as Message;
         console.log('🔵 Adding message to store for roomId:', message.roomId);
@@ -403,17 +428,83 @@ const useChatStore = create<ChatStore>()(
           console.log(
             '🔔 Message from someone else - updating conversation preview'
           );
+
+          // Check if conversation exists in local state
+          const conversationExists = afterState.conversations.some(
+            c => c.id === message.roomId
+          );
+          console.log(
+            '🔍 Conversation exists in local state:',
+            conversationExists,
+            'for roomId:',
+            message.roomId
+          );
+
+          if (!conversationExists) {
+            console.log(
+              '⚠️ Conversation not found in local state - refreshing conversations list...'
+            );
+            try {
+              // Refresh conversations to ensure we have the latest data
+              const { listConversations } = await import('@/lib/api');
+              const updatedConversations = await listConversations();
+
+              console.log(
+                '📋 Refreshed conversations count:',
+                updatedConversations.length
+              );
+              console.log(
+                '🔍 Looking for roomId after refresh:',
+                message.roomId
+              );
+              const refreshedConversation = updatedConversations.find(
+                c => c.id === message.roomId
+              );
+              console.log(
+                '🔍 Found conversation after refresh:',
+                !!refreshedConversation,
+                refreshedConversation?.name
+              );
+
+              set(
+                { conversations: updatedConversations },
+                false,
+                'refresh-conversations-on-new-message'
+              );
+
+              // Auto-join the room if we're not already joined
+              if (socket && !get().joinedRooms.has(message.roomId)) {
+                console.log(
+                  '🚀 Auto-joining room for new message:',
+                  message.roomId
+                );
+                get()._addJoinedRoom(message.roomId);
+                socket.emit('room:join', { id: message.roomId });
+              }
+            } catch (error) {
+              console.error('❌ Failed to refresh conversations:', error);
+            }
+          }
+
           get()._updateConversationPreview(
             message.roomId,
             message.content || '[File]'
           );
 
           // Only increment unread count if this is NOT the currently active conversation
-          const isActiveConversation =
-            afterState.activeRoomId === message.roomId;
+          const isActiveConversation = get().activeRoomId === message.roomId;
+          console.log('🔍 Unread count check:', {
+            messageRoomId: message.roomId,
+            activeRoomId: get().activeRoomId,
+            isActiveConversation,
+            messageFromUserId: message.userId,
+            currentUserId: currentUser.id,
+          });
+
           if (!isActiveConversation) {
             console.log(
-              '📫 Message for inactive conversation - incrementing unread count'
+              '📫 Message for inactive conversation - incrementing unread count for room:',
+              message.roomId
             );
             get()._incrementUnreadCount(message.roomId);
           } else {
@@ -434,11 +525,46 @@ const useChatStore = create<ChatStore>()(
         clientMsgId: string;
         serverId: string;
       }) => {
-        // Message replacement is now handled in _addMessage when server broadcasts msg:new
-        // This acknowledgment just confirms the message was processed
         console.log('✅ Message acknowledged:', payload);
-      },
 
+        const state = get();
+        if (!state.activeRoomId) return;
+
+        // Find and update the pending message to mark it as sent
+        const messages = state.messagesByRoom[state.activeRoomId] || [];
+        const messageIndex = messages.findIndex(
+          (m: Message) => m.clientMsgId === payload.clientMsgId
+        );
+
+        if (messageIndex !== -1) {
+          const updatedMessages = [...messages];
+          const originalMessage = updatedMessages[messageIndex];
+
+          // Update the message with the server ID and remove pending status
+          updatedMessages[messageIndex] = {
+            ...originalMessage,
+            id: payload.serverId,
+            pending: false, // Mark as no longer pending (sent successfully)
+          } as Message;
+
+          set(
+            (state: ChatStore) => ({
+              ...state,
+              messagesByRoom: {
+                ...state.messagesByRoom,
+                [state.activeRoomId!]: updatedMessages,
+              },
+            }),
+            false,
+            'message-ack'
+          );
+
+          console.log(
+            '📝 Message marked as sent (no longer pending):',
+            payload.serverId
+          );
+        }
+      },
       _handleMessageNack: (payload: {
         clientMsgId: string;
         error: string;
@@ -460,6 +586,109 @@ const useChatStore = create<ChatStore>()(
         get()._setMessages(payload.roomId, payload.history);
         // Update conversation previews after loading room history
         get()._updateAllConversationPreviews();
+      },
+
+      _handleConversationCreated: async (data: {
+        conversationId: string;
+        participants: string[];
+        type: 'dm' | 'group';
+        name?: string;
+        initiatedBy: string;
+      }) => {
+        console.log('🟢 Handling new conversation created:', data);
+        console.log('🔍 Current user ID:', get().user?.id);
+        console.log('🔍 Participants:', data.participants);
+        console.log(
+          '🔍 User involved?:',
+          data.participants.includes(get().user?.id || '')
+        );
+
+        const state = get();
+
+        // Check if the current user is involved in this conversation
+        if (!data.participants.includes(state.user?.id || '')) {
+          console.log(
+            '❌ Current user not involved in this conversation, ignoring'
+          );
+          return; // This conversation doesn't involve the current user
+        }
+
+        console.log('✅ Current user is involved, refreshing conversations...');
+        try {
+          // Add a small delay to ensure cache invalidation has completed on backend
+          await new Promise(resolve => setTimeout(resolve, 50));
+
+          // Refresh the conversations list to include the new conversation
+          const { listConversations } = await import('@/lib/api');
+          const updatedConversations = await listConversations();
+
+          console.log(
+            '📋 Updated conversations count:',
+            updatedConversations.length
+          );
+          console.log(
+            '🔍 Conversation IDs:',
+            updatedConversations.map(c => c.id)
+          );
+          console.log('🔍 Looking for new conversation:', data.conversationId);
+          const newConv = updatedConversations.find(
+            c => c.id === data.conversationId
+          );
+          console.log(
+            '🔍 New conversation found in list:',
+            !!newConv,
+            newConv?.name
+          );
+
+          set(
+            { conversations: updatedConversations },
+            false,
+            'conversation-created'
+          );
+
+          // CRITICAL: All participants must join the room to receive messages
+          if (socket && !get().joinedRooms.has(data.conversationId)) {
+            console.log(
+              '🚀 Auto-joining room for conversation participant:',
+              data.conversationId
+            );
+            console.log('🔍 Socket connected:', socket.connected);
+            console.log(
+              '🔍 Current joined rooms:',
+              Array.from(get().joinedRooms)
+            );
+
+            get()._addJoinedRoom(data.conversationId);
+            socket.emit('room:join', { id: data.conversationId });
+
+            console.log('✅ Room join event emitted for:', data.conversationId);
+            console.log(
+              '🔍 Updated joined rooms:',
+              Array.from(get().joinedRooms)
+            );
+          } else {
+            console.log(
+              '⚠️ Room join skipped - socket:',
+              !!socket,
+              'already joined:',
+              get().joinedRooms.has(data.conversationId)
+            );
+          }
+
+          // If this user initiated the conversation, auto-select it
+          if (data.initiatedBy === state.user?.id) {
+            console.log(
+              '🎯 Auto-selecting new conversation:',
+              data.conversationId
+            );
+            get().selectRoom(data.conversationId);
+          }
+        } catch (error) {
+          console.error(
+            '❌ Failed to refresh conversations after creation:',
+            error
+          );
+        }
       },
 
       _handleReactionUpdate: (data: {
@@ -775,6 +1004,34 @@ const useChatStore = create<ChatStore>()(
       _incrementUnreadCount: (roomId: string) =>
         set(
           state => {
+            console.log('📫 _incrementUnreadCount called for roomId:', roomId);
+            console.log(
+              '📫 Available conversations:',
+              state.conversations.map(c => ({
+                id: c.id,
+                name: c.name,
+                unread: c.unread,
+              }))
+            );
+
+            const targetConversation = state.conversations.find(
+              convo => convo.id === roomId
+            );
+            if (!targetConversation) {
+              console.warn(
+                '⚠️ Cannot increment unread count - conversation not found in store:',
+                roomId
+              );
+              console.warn(
+                '📋 Current conversations:',
+                state.conversations.map(c => c.id)
+              );
+              console.warn(
+                '🔄 This might be a timing issue - conversation may not be loaded yet'
+              );
+              return state; // Return unchanged state if conversation doesn't exist
+            }
+
             const updatedConversations = state.conversations.map(convo => {
               if (convo.id === roomId) {
                 const currentUnread = convo.unread || 0;
@@ -794,6 +1051,10 @@ const useChatStore = create<ChatStore>()(
               return convo;
             });
 
+            console.log(
+              '✅ Unread count incremented successfully for:',
+              roomId
+            );
             return {
               conversations: updatedConversations,
             };

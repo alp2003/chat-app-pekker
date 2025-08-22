@@ -8,36 +8,12 @@ import {
 import { PrismaService } from '../prisma.service';
 import { CacheService } from '../common/cache.service';
 import { PrismaOptimizer } from '../common/prisma/prisma-optimizer';
-
-type ConversationMember = {
-  id: string;
-  username: string;
-};
-
-type Conversation = {
-  id: string;
-  name: string;
-  avatar: string | null;
-  last: string | null;
-  members: ConversationMember[];
-};
-
-type MessageReaction = {
-  emoji: string;
-  by: string[];
-  count: number;
-};
-
-type ChatMessage = {
-  id: string;
-  roomId: string;
-  userId: string;
-  content: string;
-  createdAt: string;
-  clientMsgId: string | null;
-  replyToId: string | null;
-  reactions: MessageReaction[];
-};
+import type {
+  Conversation,
+  ChatMessage,
+  MessageReaction,
+  ConversationMember,
+} from './chat.types';
 
 @Injectable()
 export class ChatService {
@@ -46,32 +22,65 @@ export class ChatService {
     private readonly cache: CacheService,
   ) {}
 
-  // ---------- USERS ----------
+  // ---------- USER VALIDATION ----------
   /**
-   * Your User model requires name & password.
-   * For OAuth/dev users, we set safe placeholders.
-   * Real signup should create a proper password or null this column if you later allow it.
+   * Validates that a user exists in the database
+   * @throws Error if user doesn't exist
    */
-  async ensureUser(userId: string, username?: string) {
-    const fallback = username ?? `User-${userId.slice(0, 8)}`;
-    await this.prisma.user.upsert({
+  async validateUserExists(userId: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      update: username ? { username } : {},
-      create: { id: userId, username: fallback, passwordHash: '!' },
+      select: { id: true },
     });
+
+    if (!user) {
+      throw new BadRequestException(
+        `User ${userId} not found. User must be registered through AuthService first.`,
+      );
+    }
   }
 
-  async updateLastSeen(userId: string) {
-    // Be tolerant: create if missing to avoid P2025
-    await this.prisma.user.upsert({
-      where: { id: userId },
-      update: { updatedAt: new Date() }, // will refresh @updatedAt anyway
-      create: {
-        id: userId,
-        username: `User-${userId.slice(0, 8)}`,
-        passwordHash: '!',
-      },
+  /**
+   * Validates that multiple users exist in the database
+   * @throws Error if any user doesn't exist
+   */
+  async validateUsersExist(userIds: string[]): Promise<void> {
+    if (userIds.length === 0) return;
+
+    const existingUsers = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true },
     });
+
+    const existingIds = new Set(existingUsers.map((u) => u.id));
+    const missingUsers = userIds.filter((id) => !existingIds.has(id));
+
+    if (missingUsers.length > 0) {
+      throw new BadRequestException(
+        `Users not found: ${missingUsers.join(', ')}. All users must be registered through AuthService first.`,
+      );
+    }
+  }
+
+  /**
+   * Updates user's last seen timestamp.
+   * Only works for existing users - no fallback creation.
+   */
+  async updateLastSeen(userId: string): Promise<void> {
+    try {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { updatedAt: new Date() },
+      });
+    } catch (error: any) {
+      if (error.code === 'P2025') {
+        // Record not found
+        throw new BadRequestException(
+          `Cannot update last seen for user ${userId}: User not found. User must be registered first.`,
+        );
+      }
+      throw error;
+    }
   }
 
   // ---------- ROOMS / MEMBERS ----------
@@ -105,9 +114,9 @@ export class ChatService {
   }
 
   async addMember(userId: string, roomId: string, role: string = 'member') {
-    // Satisfy FK first
+    // Validate user exists - no automatic creation
+    await this.validateUserExists(userId);
 
-    await this.ensureUser(userId);
     await this.prisma.membership.upsert({
       where: { userId_roomId: { userId, roomId } },
       update: {},
@@ -118,20 +127,13 @@ export class ChatService {
   async addMembers(roomId: string, userIds: string[]) {
     if (!userIds.length) return [];
 
-    // FK-safe: create missing users, then memberships
-    await this.prisma.$transaction(async (tx) => {
-      await tx.user.createMany({
-        data: userIds.map((id) => ({
-          id,
-          username: `User-${id.slice(0, 8)}`,
-          passwordHash: '!',
-        })),
-        skipDuplicates: true,
-      });
-      await tx.membership.createMany({
-        data: userIds.map((userId) => ({ userId, roomId, role: 'member' })),
-        skipDuplicates: true,
-      });
+    // Validate all users exist first - no automatic creation
+    await this.validateUsersExist(userIds);
+
+    // Create memberships for existing users
+    await this.prisma.membership.createMany({
+      data: userIds.map((userId) => ({ userId, roomId, role: 'member' })),
+      skipDuplicates: true,
     });
 
     return await this.prisma.membership.findMany({
@@ -284,7 +286,8 @@ export class ChatService {
     clientMsgId?: string | null;
     replyToId?: string | null;
   }) {
-    await this.ensureUser(input.senderId);
+    // Validate sender exists - no automatic user creation
+    await this.validateUserExists(input.senderId);
 
     const data = {
       roomId: input.roomId,
@@ -351,25 +354,31 @@ export class ChatService {
       },
       select: { id: true },
     });
-    if (existing) return existing;
+    if (existing)
+      return { id: existing.id, otherUserId: other.id, isNew: false };
 
     // Create room and memberships in a transaction
-    return PrismaOptimizer.executeTransaction(this.prisma, async (tx) => {
-      const room = await tx.room.create({
-        data: { isGroup: false },
-        select: { id: true },
-      });
+    const result = await PrismaOptimizer.executeTransaction(
+      this.prisma,
+      async (tx) => {
+        const room = await tx.room.create({
+          data: { isGroup: false },
+          select: { id: true },
+        });
 
-      await tx.membership.createMany({
-        data: [
-          { roomId: room.id, userId: meId, role: 'member' },
-          { roomId: room.id, userId: other.id, role: 'member' },
-        ],
-        skipDuplicates: true,
-      });
+        await tx.membership.createMany({
+          data: [
+            { roomId: room.id, userId: meId, role: 'member' },
+            { roomId: room.id, userId: other.id, role: 'member' },
+          ],
+          skipDuplicates: true,
+        });
 
-      return { id: room.id };
-    });
+        return { id: room.id };
+      },
+    );
+
+    return { id: result.id, otherUserId: other.id, isNew: true };
   }
 
   // apps/api/src/chat/chat.service.ts (ensure this exists)
@@ -563,5 +572,19 @@ export class ChatService {
     }
 
     return Object.values(groupedReactions);
+  }
+
+  /**
+   * Invalidate conversations cache for a specific user
+   */
+  async invalidateConversationsCache(userId: string): Promise<void> {
+    await this.cache.invalidateConversations(userId);
+  }
+
+  /**
+   * Immediately invalidate conversations cache for critical operations like new conversation creation
+   */
+  async invalidateConversationsCacheImmediate(userId: string): Promise<void> {
+    await this.cache.invalidateConversationsImmediate(userId);
   }
 }

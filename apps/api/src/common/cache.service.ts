@@ -166,6 +166,22 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  async invalidateConversationsImmediate(userId: string): Promise<boolean> {
+    console.log(
+      `🚀 Immediately invalidating conversations cache for user: ${userId}`,
+    );
+    const key = `conversations:${userId}`;
+
+    // Clear any pending debounced invalidation
+    if (this.invalidationQueue.has(key)) {
+      clearTimeout(this.invalidationQueue.get(key));
+      this.invalidationQueue.delete(key);
+    }
+
+    // Immediately delete the cache
+    return await this.del(this.getConversationsCacheKey(userId));
+  }
+
   async cacheMessages(
     conversationId: string,
     messages: any[],

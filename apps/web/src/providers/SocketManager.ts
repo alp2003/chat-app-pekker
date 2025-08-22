@@ -123,9 +123,17 @@ export class SocketManager {
     this.socket.on('disconnect', this.handleDisconnect);
     this.socket.on('connect_error', this.handleConnectError);
 
-    // Initial connect
-    if (!this.socket.connected) {
+    // Only connect if we have a valid token
+    if (!this.socket.connected && this.authToken) {
+      console.log(
+        '🔌 Connecting socket with token:',
+        this.authToken?.slice(-10)
+      );
       this.socket.connect();
+    } else if (!this.authToken) {
+      console.log(
+        '🔌 No token available yet, waiting for token before connecting...'
+      );
     }
   }
 
@@ -184,10 +192,18 @@ export class SocketManager {
       isEmpty: !newToken,
     });
 
+    const wasFirstToken = !this.authToken && newToken;
     this.authToken = newToken;
     this.socket.auth = { token: newToken };
 
-    // Only reconnect if we have a valid token and are connected
+    // If this is our first token and we're not connected, connect now
+    if (wasFirstToken && !this.socket.connected) {
+      console.log('🔌 First token received, connecting socket...');
+      this.socket.connect();
+      return;
+    }
+
+    // Only reconnect if we have a valid token and are already connected
     if (this.socket.connected) {
       if (newToken) {
         console.log(
@@ -206,6 +222,39 @@ export class SocketManager {
   }
 
   private startCookiePolling(): void {
+    // Check for token immediately on startup
+    const initialCookie = this.getCookie(this.cookieName);
+    if (initialCookie && !this.authToken) {
+      console.log('🍪 Found initial cookie, updating token:', {
+        tokenPreview: initialCookie?.slice(-10),
+      });
+      this.updateToken(initialCookie);
+    }
+
+    // If we still don't have a token, check more frequently for the first few seconds
+    if (!this.authToken) {
+      console.log(
+        '🔍 No initial token found, setting up aggressive polling...'
+      );
+      let attempts = 0;
+      const maxAttempts = 10; // Check for 10 seconds
+      const fastCheck = setInterval(() => {
+        attempts++;
+        const cookie = this.getCookie(this.cookieName);
+        if (cookie && !this.authToken) {
+          console.log('🍪 Token found during fast polling:', {
+            tokenPreview: cookie?.slice(-10),
+            attempt: attempts,
+          });
+          this.updateToken(cookie);
+          clearInterval(fastCheck);
+        } else if (attempts >= maxAttempts) {
+          console.log('🔍 Fast polling completed, no token found');
+          clearInterval(fastCheck);
+        }
+      }, 100); // Check every 100ms for the first few seconds
+    }
+
     this.cookieCheckInterval = setInterval(async () => {
       const currentCookie = this.getCookie(this.cookieName);
 
