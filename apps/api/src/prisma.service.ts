@@ -14,15 +14,16 @@ export class PrismaService
   async onModuleInit() {
     await this.$connect();
 
-    this.$on('error' as never, (e: any) => {
+    this.$on('error' as never, (e: unknown) => {
       // You could trigger graceful shutdown here if desired
-      console.error('[Prisma error]', e?.message || e);
+      const errorMessage = e instanceof Error ? e.message : 'Unknown error';
+      console.error('[Prisma error]', errorMessage);
     });
   }
 
-  async enableShutdownHooks(app: INestApplication) {
-    this.$on('beforeExit' as never, async () => {
-      await app.close();
+  enableShutdownHooks(app: INestApplication): void {
+    this.$on('beforeExit' as never, () => {
+      void app.close();
     });
   }
 

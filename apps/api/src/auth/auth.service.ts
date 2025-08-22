@@ -5,7 +5,8 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { PrismaService } from 'src/prisma.service';
+import { PrismaService } from '../prisma.service';
+import { PrismaOptimizer } from '../common/prisma/prisma-optimizer';
 import * as argon2 from 'argon2';
 import { add } from 'date-fns';
 
@@ -31,20 +32,25 @@ export class AuthService {
     displayName?: string;
   }) {
     const username = input.username.toLowerCase().trim();
+    
+    // Use optimized select - only check existence
     const exists = await this.prisma.user.findUnique({
-      where: { username: username },
+      where: { username },
+      select: { id: true }, // Minimal select for existence check
     });
     if (exists) throw new BadRequestException('username_taken');
+    
     const isDev = this.configService.get('NODE_ENV') !== 'production';
     const argonOpts = getArgonOptions(isDev);
     const passwordHash = await argon2.hash(input.password, argonOpts);
+    
     const user = await this.prisma.user.create({
       data: {
-        username: username,
+        username,
         passwordHash,
         displayName: input?.displayName ?? username,
       },
-      select: { id: true, username: true, displayName: true },
+      select: PrismaOptimizer.selects.user.profile, // Optimized select
     });
     return user;
   }
@@ -53,6 +59,7 @@ export class AuthService {
     const uname = username.toLowerCase().trim();
     const user = await this.prisma.user.findUnique({
       where: { username: uname },
+      select: PrismaOptimizer.selects.user.auth, // Optimized select for auth
     });
     if (!user) throw new UnauthorizedException('invalid_credentials');
     const ok = await argon2.verify(user.passwordHash, password);
@@ -198,17 +205,12 @@ export class AuthService {
   async verifyAccess(token: string) {
     try {
       // Uses the default JwtModule secret configured in AuthModule
-      const payload = await this.jwt.verifyAsync(token, {
+      const payload = this.jwt.verify(token, {
         secret: this.configService.get<string>('JWT_ACCESS_SECRET', {
           infer: true,
         }),
       });
-      return payload as {
-        sub: string;
-        username?: string;
-        iat: number;
-        exp: number;
-      };
+      return payload;
     } catch {
       throw new UnauthorizedException('invalid_token');
     }
@@ -216,17 +218,12 @@ export class AuthService {
 
   async verifyRefresh(token: string) {
     try {
-      const payload = await this.jwt.verifyAsync(token, {
+      const payload = this.jwt.verify(token, {
         secret: this.configService.get<string>('JWT_REFRESH_SECRET', {
           infer: true,
         }),
       });
-      return payload as {
-        sub: string;
-        type: 'refresh';
-        iat: number;
-        exp: number;
-      };
+      return payload;
     } catch {
       throw new UnauthorizedException('invalid_refresh');
     }

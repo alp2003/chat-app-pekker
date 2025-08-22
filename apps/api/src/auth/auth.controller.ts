@@ -2,7 +2,7 @@ import { Controller, Get, Query, Body, Post, Req, Res } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { ConfigService } from '@nestjs/config';
 import { ZodBody } from '../common/zod.pipe';
-import { LoginDto, RegisterDto } from 'shared/dto';
+import { LoginDto, RegisterDto, LoginInput, RegisterInput } from 'shared/dto';
 import { Response, Request } from 'express';
 
 @Controller('auth')
@@ -38,14 +38,14 @@ export class AuthController {
   }
 
   @Post('register')
-  async register(@Body(new ZodBody(RegisterDto)) body: any) {
+  async register(@Body(new ZodBody(RegisterDto)) body: RegisterInput) {
     const user = await this.auth.register(body);
     return { user };
   }
 
   @Post('login')
   async login(
-    @Body(new ZodBody(LoginDto)) body: any,
+    @Body(new ZodBody(LoginDto)) body: LoginInput,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
@@ -145,10 +145,12 @@ export class AuthController {
     try {
       const payload = JSON.parse(
         Buffer.from(token.split('.')[1] || '', 'base64').toString() || '{}',
-      );
-      const { sub: userId } = payload as { sub?: string };
+      ) as { sub?: string };
+      const { sub: userId } = payload;
       if (userId) await this.auth.logout(userId, token);
-    } catch {}
+    } catch {
+      // Ignore errors when parsing invalid refresh token
+    }
     res.clearCookie('refresh', { path: '/' });
     res.clearCookie('access', { path: '/' });
     return { ok: true };

@@ -156,7 +156,10 @@ Replace the fake token in `app/chat/page.tsx`. For quick manual testing in the A
 ```ts
 // quick script
 import { JwtService } from '@nestjs/jwt';
-new JwtService({ secret: process.env.JWT_ACCESS_SECRET }).sign({ sub: '<user-uuid>', name: 'Alex' }, { expiresIn: '15m' });
+new JwtService({ secret: process.env.JWT_ACCESS_SECRET }).sign(
+  { sub: '<user-uuid>', name: 'Alex' },
+  { expiresIn: '15m' }
+);
 ```
 
 Pass that token to `SocketProvider`.
@@ -170,21 +173,26 @@ Pass that token to `SocketProvider`.
 
 ### Dependency summary
 
-**Backend**: `@nestjs/common @nestjs/core @nestjs/platform-socket.io @nestjs/jwt socket.io @socket.io/redis-adapter redis @prisma/client prisma zod class-validator class-transformer jsonwebtoken`
+**Backend**:
+`@nestjs/common @nestjs/core @nestjs/platform-socket.io @nestjs/jwt socket.io @socket.io/redis-adapter redis @prisma/client prisma zod class-validator class-transformer jsonwebtoken`
 
-**Frontend**: `next react react-dom socket.io-client zod @tanstack/react-query zustand tailwindcss postcss autoprefixer next-themes (optional: lucide-react shadcn/ui)`
+**Frontend**:
+`next react react-dom socket.io-client zod @tanstack/react-query zustand tailwindcss postcss autoprefixer next-themes (optional: lucide-react shadcn/ui)`
 
 **Dev/Repo**: `pnpm typescript eslint prettier turbo`
 
 ---
 
-Production‑ready, scalable starter with Socket.IO over WebSockets, Redis pub/sub for horizontal scaling, PostgreSQL via Prisma, JWT auth, typing/presence, message persistence, optimistic UI, and end‑to‑end TypeScript.
+Production‑ready, scalable starter with Socket.IO over WebSockets, Redis pub/sub for horizontal
+scaling, PostgreSQL via Prisma, JWT auth, typing/presence, message persistence, optimistic UI, and
+end‑to‑end TypeScript.
 
 ---
 
 ## Why this stack (and alternatives)
 
-- **Socket.IO on NestJS**: robust transport fallbacks, rooms, acks, and middleware. Works great behind proxies.
+- **Socket.IO on NestJS**: robust transport fallbacks, rooms, acks, and middleware. Works great
+  behind proxies.
 - **Redis adapter**: enables multi‑instance real‑time fan‑out.
 - **Prisma + Postgres**: typed models, fast queries, migrations.
 - **Next.js (App Router)**: server components for auth pages + client components for live chat.
@@ -253,24 +261,24 @@ services:
       POSTGRES_USER: chat
       POSTGRES_PASSWORD: chat
       POSTGRES_DB: chat
-    ports: ["5432:5432"]
+    ports: ['5432:5432']
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U chat"]
+      test: ['CMD-SHELL', 'pg_isready -U chat']
       interval: 5s
       timeout: 5s
       retries: 10
   redis:
     image: redis:7
-    ports: ["6379:6379"]
+    ports: ['6379:6379']
   api:
     build: ./apps/api
     env_file: .env
-    ports: ["${API_PORT}:3001"]
+    ports: ['${API_PORT}:3001']
     depends_on: [postgres, redis]
   web:
     build: ./apps/web
     env_file: .env
-    ports: ["${WEB_PORT}:3000"]
+    ports: ['${WEB_PORT}:3000']
     depends_on: [api]
 ```
 
@@ -280,12 +288,20 @@ services:
 
 ```ts
 // packages/shared/src/dto.ts
-import { z } from "zod";
+import { z } from 'zod';
 
-export const UserDTO = z.object({ id: z.string().uuid(), name: z.string().min(1), avatar: z.string().url().optional() });
+export const UserDTO = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1),
+  avatar: z.string().url().optional(),
+});
 export type UserDTO = z.infer<typeof UserDTO>;
 
-export const RoomDTO = z.object({ id: z.string().uuid(), name: z.string().min(1).optional(), isGroup: z.boolean() });
+export const RoomDTO = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1).optional(),
+  isGroup: z.boolean(),
+});
 export type RoomDTO = z.infer<typeof RoomDTO>;
 
 export const MessageIn = z.object({
@@ -310,7 +326,11 @@ export type MessageOut = z.infer<typeof MessageOut>;
 export const TypingEvent = z.object({ roomId: z.string().uuid(), isTyping: z.boolean() });
 export type TypingEvent = z.infer<typeof TypingEvent>;
 
-export const PresenceEvent = z.object({ userId: z.string().uuid(), online: z.boolean(), lastSeen: z.string() });
+export const PresenceEvent = z.object({
+  userId: z.string().uuid(),
+  online: z.boolean(),
+  lastSeen: z.string(),
+});
 export type PresenceEvent = z.infer<typeof PresenceEvent>;
 ```
 
@@ -403,5 +423,5 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { IoAdapter } from '@nestjs/platform-socket.io';
-impo
+impo;
 ```

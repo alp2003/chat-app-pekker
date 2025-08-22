@@ -1,22 +1,22 @@
-import "./globals.css";
-import type { Metadata } from "next";
+import './globals.css';
+import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-    title: "Chat App",
-    description: "Modern live chat application",
-    icons: {
-        icon: "/favicon.ico"
-    }
+  title: 'Chat App',
+  description: 'Modern live chat application',
+  icons: {
+    icon: '/favicon.ico',
+  },
 };
 
 export default function RootLayout({
-    children
+  children,
 }: {
-    children: React.ReactNode;
+  children: React.ReactNode;
 }) {
-    return (
-        <html lang="en" className="h-screen">
-            <body className="h-screen overflow-hidden">{children}</body>
-        </html>
-    );
+  return (
+    <html lang="en" className="h-screen">
+      <body className="h-screen overflow-hidden">{children}</body>
+    </html>
+  );
 }

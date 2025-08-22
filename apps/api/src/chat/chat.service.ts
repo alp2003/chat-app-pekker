@@ -7,7 +7,37 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { CacheService } from '../common/cache.service';
-import { MessageIn } from 'shared/dto';
+import { PrismaOptimizer } from '../common/prisma/prisma-optimizer';
+
+type ConversationMember = {
+  id: string;
+  username: string;
+};
+
+type Conversation = {
+  id: string;
+  name: string;
+  avatar: string | null;
+  last: string | null;
+  members: ConversationMember[];
+};
+
+type MessageReaction = {
+  emoji: string;
+  by: string[];
+  count: number;
+};
+
+type ChatMessage = {
+  id: string;
+  roomId: string;
+  userId: string;
+  content: string;
+  createdAt: string;
+  clientMsgId: string | null;
+  replyToId: string | null;
+  reactions: MessageReaction[];
+};
 
 @Injectable()
 export class ChatService {
@@ -58,11 +88,11 @@ export class ChatService {
       return await this.prisma.room.create({
         data: { name, isGroup: !!isGroup },
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Throw a real HTTP/WebSocket exception (not ExceptionsHandler)
-      throw new InternalServerErrorException(
-        err?.message || 'Failed to create room',
-      );
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to create room';
+      throw new InternalServerErrorException(errorMessage);
     }
   }
 
@@ -104,46 +134,63 @@ export class ChatService {
       });
     });
 
-    return await this.prisma.membership.findMany({ where: { roomId } });
+    return await this.prisma.membership.findMany({ 
+      where: { roomId },
+      select: PrismaOptimizer.selects.membership.withUser, // Optimized select
+      orderBy: { role: 'asc' }, // Owners first, then members
+    });
   }
 
-  async listConversations(userId: string) {
+  async listConversations(userId: string): Promise<Conversation[]> {
     // Try cache first
     const cached = await this.cache.getCachedConversations(userId);
     if (cached) {
       console.log(`📖 Cache hit for conversations: ${userId}`);
-      return cached;
+      return cached as Conversation[];
     }
 
     console.log(
       `💾 Cache miss for conversations: ${userId} - querying database`,
     );
+    
+    // Optimized query with narrow selects and minimal includes
     const memberships = await this.prisma.membership.findMany({
       where: { userId },
-      include: {
+      select: {
+        id: true,
+        role: true,
         room: {
-          include: {
+          select: {
+            id: true,
+            name: true,
+            isGroup: true,
             members: {
-              include: { user: { select: { id: true, username: true } } },
+              select: {
+                user: {
+                  select: PrismaOptimizer.selects.user.minimal, // Optimized
+                },
+              },
+              take: 50, // Limit to prevent N+1 issues with large groups
             },
             messages: {
+              select: PrismaOptimizer.selects.message.minimal, // Optimized
               orderBy: { createdAt: 'desc' },
               take: 1,
-              select: { content: true, createdAt: true, senderId: true },
             },
           },
         },
       },
+      orderBy: { room: { messages: { _count: 'desc' } } }, // Order by activity
     });
 
     const conversations = memberships.map((m) => {
       const room = m.room;
       let name = room.name || 'Unnamed Room';
-      let avatar: string | null = null;
+      const avatar: string | null = null;
 
       // for DMs, use the other user's name
       if (!room.isGroup && room.members.length === 2) {
-        const otherMember = room.members.find((mem) => mem.userId !== userId);
+        const otherMember = room.members.find((mem) => mem.user.id !== userId);
         if (otherMember) {
           name = otherMember.user.username;
           // avatar = otherMember.user.avatar; // if you have avatars
@@ -170,7 +217,11 @@ export class ChatService {
     return conversations;
   }
   // ---------- MESSAGES ----------
-  async getMessages(userId: string, roomId: string, opts?: { limit?: number }) {
+  async getMessages(
+    userId: string,
+    roomId: string,
+    opts?: { limit?: number },
+  ): Promise<ChatMessage[]> {
     const take = Math.min(Math.max(opts?.limit ?? 3000, 1), 5000);
     const page = 0; // For now we only support page 0, but this could be extended for pagination
 
@@ -180,7 +231,7 @@ export class ChatService {
       const cached = await this.cache.getCachedMessages(roomId, page);
       if (cached) {
         console.log(`📖 Cache hit for messages: ${roomId} (limit: ${take})`);
-        return cached.slice(0, take); // Return only requested amount
+        return (cached as ChatMessage[]).slice(0, take); // Return only requested amount
       }
     }
 
@@ -189,31 +240,33 @@ export class ChatService {
     );
 
     // Get the most recent messages first (desc), then reverse to show oldest first
+    // Use optimized select with sender info
     const messages = await this.prisma.message.findMany({
       where: { roomId },
       orderBy: { createdAt: 'desc' },
       take,
-      include: {
-        sender: {
-          select: {
-            id: true,
-            username: true,
-          },
-        },
-      },
+      select: PrismaOptimizer.selects.message.withSender, // Optimized select
     });
 
     // Reverse to get chronological order (oldest first)
     // Transform the data to match frontend expectations
-    const transformedMessages = messages.reverse().map((msg) => ({
-      id: msg.id,
-      roomId: msg.roomId,
-      userId: msg.senderId, // ← Map senderId to userId for frontend
-      content: msg.content,
-      createdAt: msg.createdAt.toISOString(),
-      clientMsgId: msg.clientMsgId,
-      replyToId: msg.replyToId,
-    }));
+    const transformedMessages = await Promise.all(
+      messages.reverse().map(async (msg) => {
+        // Get reactions for this message separately
+        const reactions = await this.getMessageReactions(msg.id);
+
+        return {
+          id: msg.id,
+          roomId: msg.roomId,
+          userId: msg.senderId, // ← Map senderId to userId for frontend
+          content: msg.content,
+          createdAt: msg.createdAt.toISOString(),
+          clientMsgId: msg.clientMsgId,
+          replyToId: msg.replyToId,
+          reactions,
+        };
+      }),
+    );
 
     // Cache for smaller result sets (3 minutes)
     if (take <= 5000) {
@@ -246,7 +299,7 @@ export class ChatService {
         where: {
           roomId_clientMsgId: {
             roomId: input.roomId,
-            clientMsgId: input.clientMsgId!,
+            clientMsgId: input.clientMsgId,
           },
         },
         update: {},
@@ -286,52 +339,86 @@ export class ChatService {
     if (!other) throw new NotFoundException('user_not_found');
     if (other.id === meId) throw new BadRequestException('self_dm_not_allowed');
 
-    // try to find existing 2-member non-group room
+    // try to find existing 2-member non-group room with optimized query
     const existing = await this.prisma.room.findFirst({
       where: {
         isGroup: false,
-        members: { some: { userId: meId } },
-        AND: { members: { some: { userId: other.id } } },
+        members: {
+          every: { userId: { in: [meId, other.id] } },
+          some: { userId: meId },
+        },
       },
       select: { id: true },
     });
     if (existing) return existing;
 
-    // create new room with 2 memberships
-    const room = await this.prisma.room.create({ data: { isGroup: false } });
-    await this.prisma.membership.createMany({
-      data: [
-        { roomId: room.id, userId: meId, role: 'member' },
-        { roomId: room.id, userId: other.id, role: 'member' },
-      ],
-      skipDuplicates: true,
+    // Create room and memberships in a transaction
+    return PrismaOptimizer.executeTransaction(this.prisma, async (tx) => {
+      const room = await tx.room.create({ 
+        data: { isGroup: false },
+        select: { id: true },
+      });
+      
+      await tx.membership.createMany({
+        data: [
+          { roomId: room.id, userId: meId, role: 'member' },
+          { roomId: room.id, userId: other.id, role: 'member' },
+        ],
+        skipDuplicates: true,
+      });
+      
+      return { id: room.id };
     });
-    return { id: room.id };
   }
 
   // apps/api/src/chat/chat.service.ts (ensure this exists)
   async createGroup(ownerId: string, name: string, memberIds: string[]) {
-    const room = await this.prisma.room.create({
-      data: { isGroup: true, name },
-    });
-    await this.prisma.membership.createMany({
-      data: memberIds.map((u) => ({
-        roomId: room.id,
-        userId: u,
-        role: 'member',
-      })),
-      skipDuplicates: true,
-    });
-    return room;
+    // Create group and memberships in a transaction with timeout
+    return PrismaOptimizer.executeTransaction(
+      this.prisma,
+      async (tx) => {
+        const room = await tx.room.create({
+          data: { isGroup: true, name },
+          select: PrismaOptimizer.selects.room.minimal, // Optimized select
+        });
+        
+        // Add owner and members
+        const allMemberIds = Array.from(new Set([ownerId, ...memberIds])); // Deduplicate
+        await tx.membership.createMany({
+          data: allMemberIds.map((userId, index) => ({
+            roomId: room.id,
+            userId,
+            role: index === 0 ? 'owner' : 'member', // First is owner
+          })),
+          skipDuplicates: true,
+        });
+        
+        return room;
+      },
+      15000, // Longer timeout for group creation
+    );
   }
 
-  async getRecentMessages(roomId: string, opts?: { cursor?: string }) {
-    // you can extend to do cursor-based pagination later
-    return this.prisma.message.findMany({
-      where: { roomId },
-      orderBy: { createdAt: 'asc' },
-      take: 5000,
-    });
+  async getRecentMessages(
+    roomId: string, 
+    paginationOptions?: { cursor?: string; take?: number }
+  ) {
+    const { cursor, take = 50 } = paginationOptions || {};
+    
+    // Use keyset pagination for efficient large dataset handling
+    return PrismaOptimizer.keysetPaginate(
+      (args) => this.prisma.message.findMany({
+        where: { 
+          roomId,
+          ...(args.where || {}), // Include cursor condition
+        },
+        select: PrismaOptimizer.selects.message.withSender,
+        orderBy: args.orderBy,
+        take: args.take,
+        cursor: args.cursor,
+      }),
+      { cursor, take }
+    );
   }
 
   // Helper method to invalidate conversations cache for all members of a room
@@ -355,5 +442,124 @@ export class ChatService {
     } catch (error) {
       console.error('Error invalidating conversations cache:', error);
     }
+  }
+
+  // ---------- REACTIONS ----------
+  async reactToMessage(input: {
+    messageId: string;
+    userId: string;
+    emoji: string;
+  }) {
+    const { messageId, userId, emoji } = input;
+
+    // Check if message exists and get room info for authorization
+    const message = await this.prisma.message.findUnique({
+      where: { id: messageId },
+      select: { id: true, roomId: true },
+    });
+
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    // Check if user is a member of the room (optimized query)
+    const membership = await this.prisma.membership.findUnique({
+      where: {
+        userId_roomId: {
+          userId,
+          roomId: message.roomId,
+        },
+      },
+      select: { id: true }, // Minimal select for authorization check
+    });
+
+    if (!membership) {
+      throw new ForbiddenException('User is not a member of this room');
+    }
+
+    // Handle reaction in a transaction to avoid race conditions
+    const result = await PrismaOptimizer.executeTransaction(
+      this.prisma,
+      async (tx) => {
+        // Check if user already has this exact reaction
+        const existingReaction = await tx.reaction.findUnique({
+          where: { messageId_userId: { messageId, userId } },
+          select: { id: true, emoji: true },
+        });
+
+        if (existingReaction?.emoji === emoji) {
+          // Same emoji - remove reaction (toggle off)
+          await tx.reaction.delete({
+            where: { messageId_userId: { messageId, userId } },
+          });
+          return { action: 'removed' };
+        } else {
+          // Different emoji or no existing reaction - upsert
+          await tx.reaction.upsert({
+            where: { messageId_userId: { messageId, userId } },
+            create: {
+              messageId,
+              userId,
+              emoji,
+            },
+            update: {
+              emoji,
+            },
+          });
+          return { action: 'added' };
+        }
+      }
+    );
+
+    // Get updated reactions and invalidate cache
+    const allReactions = await this.getMessageReactions(messageId);
+    await this.cache.invalidateMessages(message.roomId);
+
+    return {
+      messageId,
+      action: result.action,
+      reactions: allReactions,
+    };
+  }
+
+  async getMessageReactions(messageId: string) {
+    const reactions = await this.prisma.reaction.findMany({
+      where: { messageId },
+      select: {
+        id: true,
+        emoji: true,
+        user: {
+          select: PrismaOptimizer.selects.user.minimal, // Optimized select
+        },
+      },
+      orderBy: [
+        { emoji: 'asc' }, // Group by emoji
+        { createdAt: 'asc' }, // Then by creation time
+      ],
+    });
+
+    // Group reactions by emoji
+    const groupedReactions: Record<
+      string,
+      {
+        emoji: string;
+        by: string[];
+        count: number;
+      }
+    > = {};
+
+    for (const reaction of reactions) {
+      if (!groupedReactions[reaction.emoji]) {
+        groupedReactions[reaction.emoji] = {
+          emoji: reaction.emoji,
+          by: [],
+          count: 0,
+        };
+      }
+      groupedReactions[reaction.emoji]!.by.push(reaction.user.id);
+      groupedReactions[reaction.emoji]!.count++;
+    }
+
+    return Object.values(groupedReactions);
   }
 }

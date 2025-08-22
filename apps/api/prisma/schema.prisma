@@ -16,6 +16,7 @@ model User {
   messages      Message[]
   memberships   Membership[]
   sessions      Session[]
+  reactions     Reaction[]
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 }
@@ -67,8 +68,23 @@ model Message {
   replyToId   String?
   replies     Message[] @relation("ReplyThread")
 
+  // reactions
+  reactions   Reaction[]
+
   createdAt   DateTime @default(now())
 
   @@index([roomId, createdAt])
   @@unique([roomId, clientMsgId])
+}
+
+model Reaction {
+  id        String   @id @default(uuid())
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  messageId String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  emoji     String
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, userId]) // One reaction per user per message
 }

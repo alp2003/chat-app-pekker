@@ -1,4 +1,3 @@
-import * as path from 'path';
 import { registerAs } from '@nestjs/config';
 
 export default registerAs('app', () => ({
