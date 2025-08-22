@@ -1,13 +1,18 @@
 import appConfig from './config/app.config';
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { PrismaService } from './prisma.service';
 import { AuthModule } from './auth/auth.module';
 import { ChatModule } from './chat/chat.module';
 import * as Joi from 'joi';
 import { UsersModule } from './users/users.module';
-import { JwtModule } from '@nestjs/jwt';
 import { CacheService } from './common/cache.service';
+import { HealthController } from './health/health.controller';
+import { RequestContextMiddleware } from './common/middleware/request-context.middleware';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import { CacheModule } from './common/cache/cache.module';
+import { CacheInterceptor } from './common/cache/cache.interceptor';
 
 @Module({
   imports: [
@@ -32,8 +37,26 @@ import { CacheService } from './common/cache.service';
     AuthModule,
     ChatModule,
     UsersModule,
+    CacheModule,
   ],
-  controllers: [],
-  providers: [PrismaService, CacheService],
+  controllers: [HealthController],
+  providers: [
+    PrismaService, 
+    CacheService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: LoggingInterceptor,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: CacheInterceptor,
+    },
+  ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(RequestContextMiddleware)
+      .forRoutes('*');
+  }
+}

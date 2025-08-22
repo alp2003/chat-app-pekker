@@ -1,25 +1,46 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import * as request from 'supertest';
-import { App } from 'supertest/types';
-import { AppModule } from './../src/app.module';
+import request from 'supertest';
+import { HealthController } from '../src/health/health.controller';
+import { PrismaService } from '../src/prisma.service';
 
-describe('AppController (e2e)', () => {
-  let app: INestApplication<App>;
+// Mock PrismaService for testing
+const mockPrismaService = {
+  $queryRaw: jest.fn().mockResolvedValue([{ result: 1 }]),
+};
+
+describe('Health Check (e2e)', () => {
+  let app: INestApplication;
 
   beforeEach(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
+      controllers: [HealthController],
+      providers: [
+        {
+          provide: PrismaService,
+          useValue: mockPrismaService,
+        },
+      ],
     }).compile();
 
     app = moduleFixture.createNestApplication();
     await app.init();
   });
 
-  it('/ (GET)', () => {
+  afterEach(async () => {
+    if (app) {
+      await app.close();
+    }
+  });
+
+  it('/health (GET)', () => {
     return request(app.getHttpServer())
-      .get('/')
+      .get('/health')
       .expect(200)
-      .expect('Hello World!');
+      .expect((res) => {
+        expect(res.body.status).toBe('healthy');
+        expect(res.body.timestamp).toBeDefined();
+        expect(res.body.database).toBe('connected');
+      });
   });
 });

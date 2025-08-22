@@ -9,14 +9,10 @@
     "module": "CommonJS",
     "moduleResolution": "Node",
     "paths": {
-      "shared/*": [
-        "../../packages/shared/dist/*"
-      ]
+      "shared/*": ["../../packages/shared/dist/*"]
     }
   },
-  "include": [
-    "src/**/*"
-  ],
+  "include": ["src/**/*"],
   "exclude": [
     "node_modules",
     "test",

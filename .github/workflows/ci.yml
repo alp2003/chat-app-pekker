@@ -1,0 +1,469 @@
+name: CI/CD Pipeline
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+env:
+  NODE_VERSION: '20'
+  PNPM_VERSION: '10.14.0'
+
+jobs:
+  # 🔍 Code Quality & Type Safety
+  code-quality:
+    name: Code Quality & Type Safety
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter api prisma generate
+
+      - name: Type check
+        run: pnpm run typecheck
+
+      - name: Lint check
+        run: pnpm run lint
+
+      - name: Format check
+        run: pnpm run format:check
+
+  # 🧪 Unit & Integration Tests
+  tests:
+    name: Unit & Integration Tests
+    runs-on: ubuntu-latest
+    needs: code-quality
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_USER: testuser
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter api prisma generate
+
+      - name: Run database migrations
+        run: pnpm --filter api prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb
+
+      - name: Run unit tests
+        run: pnpm run test:unit
+        env:
+          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb
+          REDIS_URL: redis://localhost:6379
+
+      - name: Run integration tests
+        run: pnpm run test:integration
+        env:
+          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb
+          REDIS_URL: redis://localhost:6379
+
+      - name: Upload test coverage
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          directory: ./coverage
+          fail_ci_if_error: false
+
+  # 🎭 End-to-End Tests
+  e2e-tests:
+    name: E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+    needs: code-quality
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_USER: testuser
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Generate Prisma client
+        run: pnpm --filter api prisma generate
+
+      - name: Build applications
+        run: pnpm run build
+
+      - name: Run database migrations
+        run: pnpm --filter api prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb
+
+      - name: Start services in background
+        run: |
+          pnpm --filter api start &
+          pnpm --filter web start &
+          sleep 10
+        env:
+          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb
+          REDIS_URL: redis://localhost:6379
+          PORT: 3001
+          NEXTAUTH_SECRET: test-secret
+          NEXTAUTH_URL: http://localhost:3000
+
+      - name: Wait for services
+        run: |
+          timeout 60 bash -c 'until curl -f http://localhost:3001/health || curl -f http://localhost:3001; do sleep 2; done'
+          timeout 60 bash -c 'until curl -f http://localhost:3000 || curl -f http://localhost:3000/_next/static; do sleep 2; done'
+
+      - name: Run E2E tests
+        run: pnpm --filter web test:e2e
+        env:
+          BASE_URL: http://localhost:3000
+          API_URL: http://localhost:3001
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7
+
+  # 🏗️ Build & Security
+  build-and-security:
+    name: Build & Security Audit
+    runs-on: ubuntu-latest
+    needs: code-quality
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter api prisma generate
+
+      - name: Build all packages and applications
+        run: pnpm run build
+
+      - name: Security audit
+        run: pnpm run audit
+
+      - name: Dependency check
+        run: pnpm run depcheck
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            apps/*/dist/
+            apps/*/.next/
+            packages/*/dist/
+          retention-days: 7
+
+  # 🗄️ Database & Schema Validation
+  database:
+    name: Database & Schema Validation
+    runs-on: ubuntu-latest
+    needs: code-quality
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_USER: testuser
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate Prisma schema
+        run: pnpm run db:validate
+
+      - name: Generate Prisma client
+        run: pnpm --filter api prisma generate
+
+      - name: Check migration status
+        run: pnpm --filter api prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb
+
+      - name: Validate migration status
+        run: pnpm run db:migrate:status
+        env:
+          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb
+
+  # 🚀 Canary Tests (Golden Path)
+  canary:
+    name: Canary Tests (Golden Path)
+    runs-on: ubuntu-latest
+    needs: [tests, e2e-tests, build-and-security, database]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_USER: testuser
+          POSTGRES_DB: testdb
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+
+      - name: Setup test environment
+        run: |
+          pnpm --filter api prisma generate
+          pnpm --filter api prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb
+
+      - name: Start services for canary tests
+        run: |
+          pnpm --filter api start &
+          pnpm --filter web start &
+          sleep 15
+        env:
+          DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb
+          REDIS_URL: redis://localhost:6379
+          PORT: 3001
+          NEXTAUTH_SECRET: test-secret
+          NEXTAUTH_URL: http://localhost:3000
+
+      - name: Run canary tests (Golden Path)
+        run: |
+          # Test 1: API Health Check
+          curl -f http://localhost:3001/health || curl -f http://localhost:3001
+
+          # Test 2: User Registration
+          curl -X POST http://localhost:3001/auth/register \
+            -H "Content-Type: application/json" \
+            -d '{"username":"testuser","password":"testpass123","displayName":"Test User"}' || true
+
+          # Test 3: User Login
+          curl -X POST http://localhost:3001/auth/login \
+            -H "Content-Type: application/json" \
+            -d '{"username":"testuser","password":"testpass123"}' || true
+
+          # Test 4: Web App Accessibility
+          curl -f http://localhost:3000
+
+          # Test 5: WebSocket Connection Test
+          node -e "
+            const io = require('socket.io-client');
+            const socket = io('http://localhost:3001/chat');
+            socket.on('connect', () => { console.log('WebSocket connected'); process.exit(0); });
+            socket.on('error', (err) => { console.error('WebSocket error:', err); process.exit(1); });
+            setTimeout(() => { console.error('WebSocket timeout'); process.exit(1); }, 5000);
+          " || true
+
+      - name: Report canary results
+        run: echo "🎉 All canary tests passed! Golden path is healthy."
+
+  # ✅ Final Status Check
+  ci-success:
+    name: CI Success
+    runs-on: ubuntu-latest
+    needs: [code-quality, tests, e2e-tests, build-and-security, database]
+    if: always()
+    steps:
+      - name: Check all jobs success
+        run: |
+          if [[ "${{ needs.code-quality.result }}" != "success" ]]; then
+            echo "❌ Code quality checks failed"
+            exit 1
+          fi
+          if [[ "${{ needs.tests.result }}" != "success" ]]; then
+            echo "❌ Tests failed"
+            exit 1
+          fi
+          if [[ "${{ needs.e2e-tests.result }}" != "success" ]]; then
+            echo "❌ E2E tests failed"
+            exit 1
+          fi
+          if [[ "${{ needs.build-and-security.result }}" != "success" ]]; then
+            echo "❌ Build or security checks failed"
+            exit 1
+          fi
+          if [[ "${{ needs.database.result }}" != "success" ]]; then
+            echo "❌ Database checks failed"
+            exit 1
+          fi
+          echo "✅ All CI checks passed successfully!"

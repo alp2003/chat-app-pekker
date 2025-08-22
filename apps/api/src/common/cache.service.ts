@@ -56,7 +56,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
 
     try {
       const value = await this.client.get(key);
-      return value ? JSON.parse(value) : null;
+      return value ? (JSON.parse(value) as T) : null;
     } catch (error) {
       console.error('Redis get error:', error);
       return null;
@@ -125,7 +125,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     return this.set(this.getUserCacheKey(userId), userData, ttl);
   }
 
-  async getCachedUser(userId: string): Promise<any | null> {
+  async getCachedUser(userId: string): Promise<unknown | null> {
     return this.get(this.getUserCacheKey(userId));
   }
 
@@ -150,14 +150,16 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
 
     // Debounce rapid invalidations for the same key
     if (this.invalidationQueue.has(key)) {
-      clearTimeout(this.invalidationQueue.get(key)!);
+      clearTimeout(this.invalidationQueue.get(key));
     }
 
-    return new Promise((resolve) => {
-      const timeout = setTimeout(async () => {
-        this.invalidationQueue.delete(key);
-        const result = await this.del(this.getConversationsCacheKey(userId));
-        resolve(result);
+    return new Promise<boolean>((resolve) => {
+      const timeout = setTimeout(() => {
+        void (async () => {
+          this.invalidationQueue.delete(key);
+          const result = await this.del(this.getConversationsCacheKey(userId));
+          resolve(result);
+        })();
       }, 100); // 100ms debounce
 
       this.invalidationQueue.set(key, timeout);
@@ -189,33 +191,35 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
 
     // Debounce rapid invalidations for the same conversation
     if (this.invalidationQueue.has(key)) {
-      clearTimeout(this.invalidationQueue.get(key)!);
+      clearTimeout(this.invalidationQueue.get(key));
     }
 
-    return new Promise((resolve) => {
-      const timeout = setTimeout(async () => {
-        this.invalidationQueue.delete(key);
+    return new Promise<boolean>((resolve) => {
+      const timeout = setTimeout(() => {
+        void (async () => {
+          this.invalidationQueue.delete(key);
 
-        // Invalidate all pages for this conversation
-        const pattern = `messages:${conversationId}:page:*`;
-        if (!this.isEnabled() || !this.client) {
-          resolve(false);
-          return;
-        }
-
-        try {
-          const keys = await this.client.keys(pattern);
-          if (keys.length > 0) {
-            await this.client.del(keys);
-            console.log(
-              `🗑️ Invalidated ${keys.length} message cache entries for conversation: ${conversationId}`,
-            );
+          // Invalidate all pages for this conversation
+          const pattern = `messages:${conversationId}:page:*`;
+          if (!this.isEnabled() || !this.client) {
+            resolve(false);
+            return;
           }
-          resolve(true);
-        } catch (error) {
-          console.error('Redis invalidateMessages error:', error);
-          resolve(false);
-        }
+
+          try {
+            const keys = await this.client.keys(pattern);
+            if (keys.length > 0) {
+              await this.client.del(keys);
+              console.log(
+                `🗑️ Invalidated ${keys.length} message cache entries for conversation: ${conversationId}`,
+              );
+            }
+            resolve(true);
+          } catch (error) {
+            console.error('Redis invalidateMessages error:', error);
+            resolve(false);
+          }
+        })();
       }, 100); // 100ms debounce
 
       this.invalidationQueue.set(key, timeout);

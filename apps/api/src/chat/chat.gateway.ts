@@ -10,7 +10,10 @@ import {
 import type { Server, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
 import { z } from 'zod';
-import { MessageIn as MessageInSchema } from 'shared/dto';
+import {
+  MessageIn as MessageInSchema,
+  ReactionIn as ReactionInSchema,
+} from 'shared/dto';
 import { AuthService } from '../auth/auth.service';
 import { ConfigService } from '@nestjs/config';
 
@@ -35,7 +38,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   async handleConnection(client: Socket) {
     try {
-      const token = client.handshake.auth?.token;
+      const token = client.handshake.auth?.token as string;
       if (!token) throw new Error('no_token');
 
       const payload = await this.auth.verifyAccess(token);
@@ -55,7 +58,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // Join all user's conversation rooms on connection
       const conversations = await this.chat.listConversations(payload.sub);
       for (const conv of conversations) {
-        client.join(conv.id);
+        void client.join(conv.id);
       }
 
       client.emit('connected', { ok: true });
@@ -80,16 +83,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('room:join')
-  async handleJoinRoom(
+  handleJoinRoom(
     @MessageBody() { id }: { id: string },
     @ConnectedSocket() client: Socket,
-  ) {
-    client.join(id);
+  ): void {
+    void client.join(id);
 
     // Emit to the room that someone joined (optional)
     client.to(id).emit('user:joined', {
-      userId: client.data.userId,
-      username: client.data.username,
+      userId: client.data.userId as string,
+      username: client.data.username as string,
     });
   }
 
@@ -97,8 +100,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   onLeave(
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { roomId: string },
-  ) {
-    client.leave(body.roomId);
+  ): void {
+    void client.leave(body.roomId);
   }
 
   @SubscribeMessage('msg:send')
@@ -109,7 +112,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const parsed = MessageInSchema.safeParse(raw);
     if (!parsed.success) {
       return client.emit('msg:nack', {
-        clientMsgId: (raw as any)?.clientMsgId,
+        clientMsgId: (raw as { clientMsgId?: string })?.clientMsgId,
         error: 'invalid_payload',
         details: z.treeifyError(parsed.error),
       });
@@ -120,9 +123,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // simple flood control
     const key = `flood:${client.id}`;
     const now = Date.now();
-    const last = (client as any)[key] || 0;
+    const last = (client as unknown as { [key: string]: number })[key] || 0;
     if (now - last < 200) return;
-    (client as any)[key] = now;
+    (client as unknown as { [key: string]: number })[key] = now;
 
     // save (content defaults to "")
     const saved = await this.chat.saveMessage({
@@ -141,14 +144,54 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('typing')
-  async onTyping(
+  onTyping(
     @ConnectedSocket() client: Socket,
     @MessageBody() body: unknown,
-  ) {
+  ): void {
     const parsed = TypingSchema.safeParse(body);
     if (!parsed.success) return;
     this.server
       .to(parsed.data.roomId)
-      .emit('typing', { userId: client.data.userId, ...parsed.data });
+      .emit('typing', { userId: client.data.userId as string, ...parsed.data });
+  }
+
+  @SubscribeMessage('msg:react')
+  async onReaction(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() raw: unknown,
+  ) {
+    const parsed = ReactionInSchema.safeParse(raw);
+    if (!parsed.success) {
+      return client.emit('msg:react:nack', {
+        error: 'invalid_payload',
+        details: z.treeifyError(parsed.error),
+      });
+    }
+
+    const userId = client.data.userId as string;
+
+    try {
+      // Process the reaction
+      const result = await this.chat.reactToMessage({
+        messageId: parsed.data.messageId,
+        userId,
+        emoji: parsed.data.emoji,
+      });
+
+      // Emit the reaction update to all users in the room
+      this.server.to(parsed.data.roomId).emit('msg:react', result);
+
+      // Send acknowledgment back to sender
+      client.emit('msg:react:ack', {
+        messageId: parsed.data.messageId,
+        success: true,
+      });
+    } catch (error) {
+      console.error('Reaction error:', error);
+      client.emit('msg:react:nack', {
+        messageId: parsed.data.messageId,
+        error: error instanceof Error ? error.message : 'unknown_error',
+      });
+    }
   }
 }

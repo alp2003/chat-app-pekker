@@ -1,5 +1,32 @@
-node_modules
-.pnpm-store
-dist
-.next
-coverage
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+.next/
+out/
+build/
+
+# Generated files
+.prisma/
+prisma/migrations/
+
+# Environment and config
+.env*
+*.log
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+
+# Test outputs
+coverage/
+test-results/
+playwright-report/
+
+# Lock files
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
