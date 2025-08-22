@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
+import { AuthService } from '../auth/auth.service';
 import { RequestWithContext } from '../common/middleware/request-context.middleware';
 import { loggerFactory } from '../common/logger/logger.factory';
 
@@ -12,6 +13,12 @@ describe('UsersController Logging', () => {
   const mockUsersService = {
     getMe: jest.fn(),
     searchUsers: jest.fn(),
+  };
+
+  const mockAuthService = {
+    validateUser: jest.fn(),
+    login: jest.fn(),
+    register: jest.fn(),
   };
 
   const mockRequest: RequestWithContext = {
@@ -26,6 +33,10 @@ describe('UsersController Logging', () => {
         {
           provide: UsersService,
           useValue: mockUsersService,
+        },
+        {
+          provide: AuthService,
+          useValue: mockAuthService,
         },
       ],
     }).compile();

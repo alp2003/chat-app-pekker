@@ -203,6 +203,7 @@ export class ChatService {
         id: room.id,
         name,
         avatar,
+        isGroup: room.isGroup,
         last: lastMsg?.content || null,
         members: room.members.map((mem) => ({
           id: mem.user.id,

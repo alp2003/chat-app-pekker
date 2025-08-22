@@ -16,8 +16,8 @@ const mockMembership = {
 
 describe('ChatService - Prisma Optimization Parity Tests', () => {
   let service: ChatService;
-  let prisma: jest.Mocked<PrismaService>;
-  let cache: jest.Mocked<CacheService>;
+  let prisma: any;
+  let cache: any;
 
   beforeEach(async () => {
     const mockPrismaService = {
@@ -40,6 +40,7 @@ describe('ChatService - Prisma Optimization Parity Tests', () => {
         findMany: jest.fn(),
         create: jest.fn(),
         upsert: jest.fn(),
+        findUnique: jest.fn(),
       },
       reaction: {
         findMany: jest.fn(),
@@ -110,7 +111,7 @@ describe('ChatService - Prisma Optimization Parity Tests', () => {
 
       cache.getCachedConversations.mockResolvedValue(null);
       prisma.membership.findMany.mockResolvedValue(mockMemberships as any);
-      cache.cacheConversations.mockResolvedValue(undefined);
+      cache.cacheConversations.mockResolvedValue(true);
 
       const result = await service.listConversations('user1');
 
@@ -155,6 +156,7 @@ describe('ChatService - Prisma Optimization Parity Tests', () => {
         id: 'room1',
         name: 'bob', // DM uses other user's name
         avatar: null,
+        isGroup: false,
         last: 'Hello',
         members: [
           { id: 'user1', username: 'alice' },
@@ -226,7 +228,7 @@ describe('ChatService - Prisma Optimization Parity Tests', () => {
       prisma.room.findFirst.mockResolvedValue(null); // No existing room
 
       // Mock transaction
-      prisma.$transaction.mockImplementation(async (callback) => {
+      prisma.$transaction.mockImplementation(async (callback: any) => {
         const mockTx = {
           room: { create: jest.fn().mockResolvedValue(mockRoom) },
           membership: { createMany: jest.fn().mockResolvedValue({ count: 2 }) },
@@ -256,7 +258,7 @@ describe('ChatService - Prisma Optimization Parity Tests', () => {
       prisma.membership.findUnique.mockResolvedValue(mockMembership as any);
 
       // Mock transaction
-      prisma.$transaction.mockImplementation(async (callback) => {
+      prisma.$transaction.mockImplementation(async (callback: any) => {
         const mockTx = {
           reaction: {
             findUnique: jest.fn().mockResolvedValue(null), // No existing reaction

@@ -33,15 +33,16 @@ describe('Prisma Optimizations (Integration)', () => {
 
   describe('Auth Service Optimizations', () => {
     it('should validate user with optimized select', async () => {
-      // Create a test user
+      // Create a test user with unique username
+      const uniqueUsername = `testoptimized-${Date.now()}`;
       const testUser = await authService.register({
-        username: 'testoptimized',
+        username: uniqueUsername,
         password: 'password123',
         displayName: 'Test Optimized',
       });
 
       expect(testUser).toHaveProperty('id');
-      expect(testUser).toHaveProperty('username', 'testoptimized');
+      expect(testUser).toHaveProperty('username', uniqueUsername);
       expect(testUser).toHaveProperty('displayName', 'Test Optimized');
 
       // Validate the user credentials
@@ -83,31 +84,33 @@ describe('Prisma Optimizations (Integration)', () => {
     });
 
     it('should get user profile with optimized select', async () => {
-      // Create test user
+      // Create test user with unique username
+      const uniqueUsername = `profiletest-${Date.now()}`;
       const testUser = await authService.register({
-        username: 'profiletest',
+        username: uniqueUsername,
         password: 'password123',
         displayName: 'Profile Test',
       });
 
       const profile = await usersService.getMe({ userId: testUser.id });
       expect(profile).toHaveProperty('id', testUser.id);
-      expect(profile).toHaveProperty('username', 'profiletest');
+      expect(profile).toHaveProperty('username', uniqueUsername);
       expect(profile).toHaveProperty('displayName', 'Profile Test');
     });
   });
 
   describe('Chat Service Optimizations', () => {
     it('should get conversations with optimized queries', async () => {
-      // Create test users
+      // Create test users with unique usernames
+      const timestamp = Date.now();
       const user1 = await authService.register({
-        username: 'chatuser1',
+        username: `chatuser1-${timestamp}`,
         password: 'password123',
         displayName: 'Chat User 1',
       });
 
       const user2 = await authService.register({
-        username: 'chatuser2',
+        username: `chatuser2-${timestamp}`,
         password: 'password123',
         displayName: 'Chat User 2',
       });
