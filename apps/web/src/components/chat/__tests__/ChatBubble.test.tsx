@@ -12,18 +12,38 @@ Object.assign(navigator, {
 
 // Mock Radix UI components
 jest.mock('@/components/ui/popover', () => ({
-  Popover: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  PopoverContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  PopoverTrigger: ({ children, asChild }: { children: React.ReactNode; asChild?: boolean }) => 
-    asChild ? children : <div>{children}</div>,
+  Popover: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  PopoverContent: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  PopoverTrigger: ({
+    children,
+    asChild,
+  }: {
+    children: React.ReactNode;
+    asChild?: boolean;
+  }) => (asChild ? children : <div>{children}</div>),
 }));
 
 jest.mock('@/components/ui/tooltip', () => ({
-  TooltipProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  Tooltip: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  TooltipTrigger: ({ children, asChild }: { children: React.ReactNode; asChild?: boolean }) => 
-    asChild ? children : <div>{children}</div>,
-  TooltipContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  TooltipProvider: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  Tooltip: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+  TooltipTrigger: ({
+    children,
+    asChild,
+  }: {
+    children: React.ReactNode;
+    asChild?: boolean;
+  }) => (asChild ? children : <div>{children}</div>),
+  TooltipContent: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
 }));
 
 describe('ChatBubble', () => {
@@ -59,7 +79,9 @@ describe('ChatBubble', () => {
   });
 
   it('shows different styling for own messages', () => {
-    const { container, rerender } = render(<ChatBubble {...defaultProps} mine={true} />);
+    const { container, rerender } = render(
+      <ChatBubble {...defaultProps} mine={true} />
+    );
     let messageContainer = container.querySelector('.justify-end');
     expect(messageContainer).toBeInTheDocument();
 
@@ -88,7 +110,7 @@ describe('ChatBubble', () => {
       content: 'Here is some code: ```console.log("hello")```',
     };
     render(<ChatBubble {...defaultProps} m={messageWithCode} />);
-    
+
     const codeElement = screen.getByText('console.log("hello")');
     expect(codeElement).toBeInTheDocument();
     expect(codeElement.tagName).toBe('CODE');
@@ -100,7 +122,7 @@ describe('ChatBubble', () => {
       content: 'Check out this link: https://example.com',
     };
     render(<ChatBubble {...defaultProps} m={messageWithUrl} />);
-    
+
     const link = screen.getByRole('link', { name: /https:\/\/example\.com/ });
     expect(link).toBeInTheDocument();
     expect(link).toHaveAttribute('href', 'https://example.com');
@@ -111,7 +133,7 @@ describe('ChatBubble', () => {
   it('renders component without crashing for pending messages', () => {
     const pendingMessage = { ...mockMessage, pending: true };
     render(<ChatBubble {...defaultProps} m={pendingMessage} mine={true} />);
-    
+
     // Just ensure it renders without error
     expect(screen.getByText(/Hello/)).toBeInTheDocument();
   });
@@ -119,9 +141,11 @@ describe('ChatBubble', () => {
   it('renders component without crashing for read messages', () => {
     const readMessage = { ...mockMessage, read: true };
     render(<ChatBubble {...defaultProps} m={readMessage} mine={true} />);
-    
+
     // Check for check marks (read state)
-    const checkIcon = document.querySelector('.lucide-check, .lucide-check-check');
+    const checkIcon = document.querySelector(
+      '.lucide-check, .lucide-check-check'
+    );
     if (checkIcon) {
       expect(checkIcon).toBeInTheDocument();
     }
@@ -138,11 +162,11 @@ describe('ChatBubble', () => {
       ],
     };
     render(<ChatBubble {...defaultProps} m={messageWithReactions} />);
-    
+
     // Look for the specific reaction buttons (rounded-full for actual reactions)
     const reactionButtons = document.querySelectorAll('.rounded-full');
     expect(reactionButtons.length).toBeGreaterThan(0);
-    
+
     // Check that buttons contain the expected emojis and counts
     const reactionArea = document.querySelector('.flex.flex-wrap');
     expect(reactionArea).toBeInTheDocument();

@@ -81,11 +81,19 @@ describe('CacheInterceptor', () => {
         resetTime: Date.now() + 60000,
       });
 
-      const result = await interceptor.intercept(mockExecutionContext, mockCallHandler).toPromise();
+      const result = await interceptor
+        .intercept(mockExecutionContext, mockCallHandler)
+        .toPromise();
 
       expect(result).toEqual({ data: 'test' });
-      expect(mockResponse.setHeader).toHaveBeenCalledWith('X-RateLimit-Limit', 5);
-      expect(mockResponse.setHeader).toHaveBeenCalledWith('X-RateLimit-Remaining', 4);
+      expect(mockResponse.setHeader).toHaveBeenCalledWith(
+        'X-RateLimit-Limit',
+        5,
+      );
+      expect(mockResponse.setHeader).toHaveBeenCalledWith(
+        'X-RateLimit-Remaining',
+        4,
+      );
     });
 
     it('should deny request when rate limit exceeded', async () => {
@@ -96,14 +104,20 @@ describe('CacheInterceptor', () => {
       });
 
       await expect(
-        interceptor.intercept(mockExecutionContext, mockCallHandler).toPromise()
+        interceptor
+          .intercept(mockExecutionContext, mockCallHandler)
+          .toPromise(),
       ).rejects.toThrow(HttpException);
 
       try {
-        await interceptor.intercept(mockExecutionContext, mockCallHandler).toPromise();
+        await interceptor
+          .intercept(mockExecutionContext, mockCallHandler)
+          .toPromise();
       } catch (error) {
         expect(error).toBeInstanceOf(HttpException);
-        expect((error as HttpException).getStatus()).toBe(HttpStatus.TOO_MANY_REQUESTS);
+        expect((error as HttpException).getStatus()).toBe(
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
       }
     });
 
@@ -114,12 +128,14 @@ describe('CacheInterceptor', () => {
         resetTime: Date.now() + 60000,
       });
 
-      await interceptor.intercept(mockExecutionContext, mockCallHandler).toPromise();
+      await interceptor
+        .intercept(mockExecutionContext, mockCallHandler)
+        .toPromise();
 
-      expect(cacheHelper.checkRateLimit).toHaveBeenCalledWith(
-        'user:user-123',
-        { window: 60, limit: 5 }
-      );
+      expect(cacheHelper.checkRateLimit).toHaveBeenCalledWith('user:user-123', {
+        window: 60,
+        limit: 5,
+      });
     });
   });
 
@@ -138,22 +154,28 @@ describe('CacheInterceptor', () => {
     });
 
     it('should cache GET requests when caching is enabled', async () => {
-      (cacheHelper.readThrough as jest.Mock).mockResolvedValue({ data: 'cached' });
+      (cacheHelper.readThrough as jest.Mock).mockResolvedValue({
+        data: 'cached',
+      });
 
-      const result = await interceptor.intercept(mockExecutionContext, mockCallHandler).toPromise();
+      const result = await interceptor
+        .intercept(mockExecutionContext, mockCallHandler)
+        .toPromise();
 
       expect(result).toEqual({ data: 'cached' });
       expect(cacheHelper.readThrough).toHaveBeenCalledWith(
         'conversations:user:user-123',
         expect.any(Function),
-        { ttl: 60, jitter: 10 }
+        { ttl: 60, jitter: 10 },
       );
     });
 
     it('should not cache when caching is disabled', async () => {
       (cacheHelper.isCachingEnabled as jest.Mock).mockReturnValue(false);
 
-      const result = await interceptor.intercept(mockExecutionContext, mockCallHandler).toPromise();
+      const result = await interceptor
+        .intercept(mockExecutionContext, mockCallHandler)
+        .toPromise();
 
       expect(result).toEqual({ data: 'test' });
       expect(cacheHelper.readThrough).not.toHaveBeenCalled();
@@ -169,21 +191,27 @@ describe('CacheInterceptor', () => {
         getHandler: () => jest.fn(),
       } as unknown as ExecutionContext;
 
-      const result = await interceptor.intercept(postContext, mockCallHandler).toPromise();
+      const result = await interceptor
+        .intercept(postContext, mockCallHandler)
+        .toPromise();
 
       expect(result).toEqual({ data: 'test' });
       expect(cacheHelper.readThrough).not.toHaveBeenCalled();
     });
 
     it('should build cache key with user ID replacement', async () => {
-      (cacheHelper.readThrough as jest.Mock).mockResolvedValue({ data: 'cached' });
+      (cacheHelper.readThrough as jest.Mock).mockResolvedValue({
+        data: 'cached',
+      });
 
-      await interceptor.intercept(mockExecutionContext, mockCallHandler).toPromise();
+      await interceptor
+        .intercept(mockExecutionContext, mockCallHandler)
+        .toPromise();
 
       expect(cacheHelper.readThrough).toHaveBeenCalledWith(
         'conversations:user:user-123',
         expect.any(Function),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
 
@@ -192,7 +220,7 @@ describe('CacheInterceptor', () => {
         ...mockRequest,
         query: { roomId: 'room-456', limit: '10' },
       };
-      
+
       const contextWithQuery = {
         switchToHttp: () => ({
           getRequest: () => requestWithQuery,
@@ -201,14 +229,18 @@ describe('CacheInterceptor', () => {
         getHandler: () => jest.fn(),
       } as unknown as ExecutionContext;
 
-      (cacheHelper.readThrough as jest.Mock).mockResolvedValue({ data: 'cached' });
+      (cacheHelper.readThrough as jest.Mock).mockResolvedValue({
+        data: 'cached',
+      });
 
-      await interceptor.intercept(contextWithQuery, mockCallHandler).toPromise();
+      await interceptor
+        .intercept(contextWithQuery, mockCallHandler)
+        .toPromise();
 
       expect(cacheHelper.readThrough).toHaveBeenCalledWith(
         expect.stringContaining('roomId=room-456&limit=10'),
         expect.any(Function),
-        expect.any(Object)
+        expect.any(Object),
       );
     });
   });
@@ -240,9 +272,13 @@ describe('CacheInterceptor', () => {
         remaining: 4,
         resetTime: Date.now() + 60000,
       });
-      (cacheHelper.readThrough as jest.Mock).mockResolvedValue({ data: 'cached' });
+      (cacheHelper.readThrough as jest.Mock).mockResolvedValue({
+        data: 'cached',
+      });
 
-      const result = await interceptor.intercept(mockExecutionContext, mockCallHandler).toPromise();
+      const result = await interceptor
+        .intercept(mockExecutionContext, mockCallHandler)
+        .toPromise();
 
       expect(result).toEqual({ data: 'cached' });
       expect(cacheHelper.checkRateLimit).toHaveBeenCalled();
@@ -257,7 +293,9 @@ describe('CacheInterceptor', () => {
       });
 
       await expect(
-        interceptor.intercept(mockExecutionContext, mockCallHandler).toPromise()
+        interceptor
+          .intercept(mockExecutionContext, mockCallHandler)
+          .toPromise(),
       ).rejects.toThrow(HttpException);
 
       expect(cacheHelper.readThrough).not.toHaveBeenCalled();
@@ -270,7 +308,9 @@ describe('CacheInterceptor', () => {
     });
 
     it('should pass through without rate limiting or caching', async () => {
-      const result = await interceptor.intercept(mockExecutionContext, mockCallHandler).toPromise();
+      const result = await interceptor
+        .intercept(mockExecutionContext, mockCallHandler)
+        .toPromise();
 
       expect(result).toEqual({ data: 'test' });
       expect(cacheHelper.checkRateLimit).not.toHaveBeenCalled();

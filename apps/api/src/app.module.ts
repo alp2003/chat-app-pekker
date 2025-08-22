@@ -41,7 +41,7 @@ import { CacheInterceptor } from './common/cache/cache.interceptor';
   ],
   controllers: [HealthController],
   providers: [
-    PrismaService, 
+    PrismaService,
     CacheService,
     {
       provide: APP_INTERCEPTOR,
@@ -55,8 +55,6 @@ import { CacheInterceptor } from './common/cache/cache.interceptor';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(RequestContextMiddleware)
-      .forRoutes('*');
+    consumer.apply(RequestContextMiddleware).forRoutes('*');
   }
 }

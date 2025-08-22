@@ -50,8 +50,9 @@ export class PrismaOptimizer {
 
     const hasNextPage = results.length > take;
     const data = hasNextPage ? results.slice(0, -1) : results;
-    
-    const nextCursor = hasNextPage && data.length > 0 ? data[data.length - 1]?.id : undefined;
+
+    const nextCursor =
+      hasNextPage && data.length > 0 ? data[data.length - 1]?.id : undefined;
     const prevCursor = data.length > 0 ? data[0]?.id : undefined;
 
     return {

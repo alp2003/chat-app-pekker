@@ -11,11 +11,7 @@ async function handleLogout() {
 export function ServerLogoutBtn() {
   return (
     <form action={handleLogout}>
-      <Button 
-        type="submit" 
-        variant="ghost"
-        className="w-full justify-start"
-      >
+      <Button type="submit" variant="ghost" className="w-full justify-start">
         Logout
       </Button>
     </form>

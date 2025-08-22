@@ -134,7 +134,7 @@ export class ChatService {
       });
     });
 
-    return await this.prisma.membership.findMany({ 
+    return await this.prisma.membership.findMany({
       where: { roomId },
       select: PrismaOptimizer.selects.membership.withUser, // Optimized select
       orderBy: { role: 'asc' }, // Owners first, then members
@@ -152,7 +152,7 @@ export class ChatService {
     console.log(
       `💾 Cache miss for conversations: ${userId} - querying database`,
     );
-    
+
     // Optimized query with narrow selects and minimal includes
     const memberships = await this.prisma.membership.findMany({
       where: { userId },
@@ -354,11 +354,11 @@ export class ChatService {
 
     // Create room and memberships in a transaction
     return PrismaOptimizer.executeTransaction(this.prisma, async (tx) => {
-      const room = await tx.room.create({ 
+      const room = await tx.room.create({
         data: { isGroup: false },
         select: { id: true },
       });
-      
+
       await tx.membership.createMany({
         data: [
           { roomId: room.id, userId: meId, role: 'member' },
@@ -366,7 +366,7 @@ export class ChatService {
         ],
         skipDuplicates: true,
       });
-      
+
       return { id: room.id };
     });
   }
@@ -381,7 +381,7 @@ export class ChatService {
           data: { isGroup: true, name },
           select: PrismaOptimizer.selects.room.minimal, // Optimized select
         });
-        
+
         // Add owner and members
         const allMemberIds = Array.from(new Set([ownerId, ...memberIds])); // Deduplicate
         await tx.membership.createMany({
@@ -392,7 +392,7 @@ export class ChatService {
           })),
           skipDuplicates: true,
         });
-        
+
         return room;
       },
       15000, // Longer timeout for group creation
@@ -400,24 +400,25 @@ export class ChatService {
   }
 
   async getRecentMessages(
-    roomId: string, 
-    paginationOptions?: { cursor?: string; take?: number }
+    roomId: string,
+    paginationOptions?: { cursor?: string; take?: number },
   ) {
     const { cursor, take = 50 } = paginationOptions || {};
-    
+
     // Use keyset pagination for efficient large dataset handling
     return PrismaOptimizer.keysetPaginate(
-      (args) => this.prisma.message.findMany({
-        where: { 
-          roomId,
-          ...(args.where || {}), // Include cursor condition
-        },
-        select: PrismaOptimizer.selects.message.withSender,
-        orderBy: args.orderBy,
-        take: args.take,
-        cursor: args.cursor,
-      }),
-      { cursor, take }
+      (args) =>
+        this.prisma.message.findMany({
+          where: {
+            roomId,
+            ...(args.where || {}), // Include cursor condition
+          },
+          select: PrismaOptimizer.selects.message.withSender,
+          orderBy: args.orderBy,
+          take: args.take,
+          cursor: args.cursor,
+        }),
+      { cursor, take },
     );
   }
 
@@ -508,7 +509,7 @@ export class ChatService {
           });
           return { action: 'added' };
         }
-      }
+      },
     );
 
     // Get updated reactions and invalidate cache

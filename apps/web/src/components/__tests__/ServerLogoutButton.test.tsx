@@ -24,7 +24,7 @@ describe('ServerLogoutButton', () => {
     render(<ServerLogoutBtn />);
     const form = screen.getByRole('button').closest('form');
     const button = screen.getByRole('button');
-    
+
     expect(form).toBeInTheDocument();
     expect(button).toHaveAttribute('type', 'submit');
   });
@@ -32,14 +32,14 @@ describe('ServerLogoutButton', () => {
   it('has correct styling classes', () => {
     render(<ServerLogoutBtn />);
     const button = screen.getByRole('button');
-    
+
     expect(button).toHaveClass('w-full justify-start');
   });
 
   it('should include proper form action attribute', () => {
     render(<ServerLogoutBtn />);
     const form = screen.getByRole('button').closest('form');
-    
+
     // The form should have an action pointing to our server action
     expect(form).toHaveAttribute('action');
   });

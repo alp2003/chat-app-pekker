@@ -21,7 +21,9 @@ import { loggerFactory } from '../logger/logger.factory';
 
 @Injectable()
 export class CacheInterceptor implements NestInterceptor {
-  private readonly logger = loggerFactory.createLogger({ service: 'CacheInterceptor' });
+  private readonly logger = loggerFactory.createLogger({
+    service: 'CacheInterceptor',
+  });
 
   constructor(
     private readonly cacheHelper: CacheHelper,
@@ -31,7 +33,7 @@ export class CacheInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const request = context.switchToHttp().getRequest<Request>();
     const response = context.switchToHttp().getResponse<Response>();
-    
+
     // Get metadata from decorators
     const cacheMetadata = this.reflector.get<CacheMetadata>(
       CACHE_KEY,
@@ -42,7 +44,16 @@ export class CacheInterceptor implements NestInterceptor {
       context.getHandler(),
     );
 
-    return from(this.handleRequest(context, next, request, response, cacheMetadata, rateLimitMetadata));
+    return from(
+      this.handleRequest(
+        context,
+        next,
+        request,
+        response,
+        cacheMetadata,
+        rateLimitMetadata,
+      ),
+    );
   }
 
   private async handleRequest(
@@ -60,7 +71,11 @@ export class CacheInterceptor implements NestInterceptor {
       }
 
       // Handle caching for GET requests
-      if (cacheMetadata && request.method === 'GET' && this.cacheHelper.isCachingEnabled()) {
+      if (
+        cacheMetadata &&
+        request.method === 'GET' &&
+        this.cacheHelper.isCachingEnabled()
+      ) {
         return await this.handleCache(context, next, request, cacheMetadata);
       }
 
@@ -88,12 +103,15 @@ export class CacheInterceptor implements NestInterceptor {
     response.setHeader('X-RateLimit-Reset', Math.ceil(result.resetTime / 1000));
 
     if (!result.allowed) {
-      this.logger.warn({
-        key,
-        limit: metadata.limit,
-        window: metadata.window,
-      }, 'Rate limit exceeded');
-      
+      this.logger.warn(
+        {
+          key,
+          limit: metadata.limit,
+          window: metadata.window,
+        },
+        'Rate limit exceeded',
+      );
+
       throw new HttpException(
         {
           statusCode: HttpStatus.TOO_MANY_REQUESTS,
@@ -112,7 +130,7 @@ export class CacheInterceptor implements NestInterceptor {
     metadata: CacheMetadata,
   ): Promise<any> {
     const cacheKey = this.buildCacheKey(request, metadata.key);
-    
+
     return await this.cacheHelper.readThrough(
       cacheKey,
       async () => {
@@ -126,20 +144,25 @@ export class CacheInterceptor implements NestInterceptor {
     );
   }
 
-  private buildCacheKey(request: Request & { user?: { id: string } }, keyTemplate: string): string {
+  private buildCacheKey(
+    request: Request & { user?: { id: string } },
+    keyTemplate: string,
+  ): string {
     let key = keyTemplate;
-    
+
     // Replace common placeholders
     key = key.replace(':userId', request.user?.id || 'anonymous');
     key = key.replace(':path', request.path);
     key = key.replace(':method', request.method);
-    
+
     // Replace query parameters
-    const queryString = new URLSearchParams(request.query as Record<string, string>).toString();
+    const queryString = new URLSearchParams(
+      request.query as Record<string, string>,
+    ).toString();
     if (queryString) {
       key = `${key}?${queryString}`;
     }
-    
+
     return key;
   }
 }

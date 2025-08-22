@@ -28,7 +28,8 @@ export function useAuth() {
         if (mounted) {
           // If authentication fails, user needs to log in again
           setUser(null);
-          const errorMessage = err instanceof Error ? err.message : 'Authentication failed';
+          const errorMessage =
+            err instanceof Error ? err.message : 'Authentication failed';
           setError(errorMessage);
         }
       } finally {

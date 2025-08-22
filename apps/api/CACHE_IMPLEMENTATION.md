@@ -5,7 +5,7 @@
 This implementation adds optional caching and rate limiting features to the chat API with the following key components:
 
 1. **Read-through caching** with TTL and jitter for GET endpoints
-2. **Redis-based rate limiting** with sliding window algorithm  
+2. **Redis-based rate limiting** with sliding window algorithm
 3. **Feature flag support** (`CACHE_TICKETS=1` to enable caching)
 4. **In-memory Redis mock** for testing
 5. **Comprehensive test coverage** with structured logging
@@ -16,7 +16,7 @@ This implementation adds optional caching and rate limiting features to the chat
 
 1. **Core Cache Implementation**
    - `src/common/cache/cache-helper.ts` - Main cache utility with Redis operations
-   - `src/common/cache/cache.decorators.ts` - Decorators for caching and rate limiting  
+   - `src/common/cache/cache.decorators.ts` - Decorators for caching and rate limiting
    - `src/common/cache/cache.interceptor.ts` - NestJS interceptor for automatic cache/rate limit handling
    - `src/common/cache/cache.module.ts` - NestJS module configuration
 
@@ -34,7 +34,7 @@ This implementation adds optional caching and rate limiting features to the chat
    - `src/app.module.ts` - Added CacheModule import and global CacheInterceptor
    - `package.json` - Added ioredis dependency
 
-2. **Chat Controller** 
+2. **Chat Controller**
    - `src/chat/chat.controller.ts` - Added cache decorators to GET endpoints and rate limiting to POST endpoints
 
 ## Feature Implementation
@@ -42,12 +42,14 @@ This implementation adds optional caching and rate limiting features to the chat
 ### 1. Read-Through Caching
 
 **Endpoints with Caching** (enabled when `CACHE_TICKETS=1`):
+
 - `GET /chat/conversations` - 60s TTL, 10% jitter
 - `GET /chat/messages` - 30s TTL, 20% jitter
 
 **Cache Key Pattern**: `{endpoint}:user:{userId}[?queryParams]`
 
 **Benefits**:
+
 - Automatic cache miss/hit handling
 - TTL with jitter to prevent cache stampede
 - Graceful fallback on Redis failures
@@ -56,10 +58,12 @@ This implementation adds optional caching and rate limiting features to the chat
 ### 2. Rate Limiting
 
 **Protected Endpoints**:
+
 - `POST /chat/dm/start` - 10 requests/minute per user
 - `POST /chat/groups` - 5 requests per 5 minutes per user
 
 **Features**:
+
 - Sliding window algorithm using Redis sorted sets
 - Per-user and per-IP rate limiting support
 - HTTP headers: `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
@@ -68,6 +72,7 @@ This implementation adds optional caching and rate limiting features to the chat
 ### 3. Configuration
 
 **Environment Variables**:
+
 ```bash
 # Core Redis
 REDIS_HOST=localhost
@@ -79,13 +84,14 @@ CACHE_TICKETS=1  # Enable caching (0=disabled, 1=enabled)
 ```
 
 **Usage Examples**:
+
 ```typescript
 // Caching decorator
 @Cache('conversations:user::userId', 60, 10)
 @Get('conversations')
 async conversations(@UserId() userId: string) { ... }
 
-// Rate limiting decorator  
+// Rate limiting decorator
 @RateLimitByUser(60, 10) // 10 requests per minute per user
 @Post('dm/start')
 async startDm(@UserId() me: string, @Body() dto: StartDmDto) { ... }
@@ -105,6 +111,7 @@ jest.mock('ioredis', () => {
 ```
 
 **Supported Operations**:
+
 - Basic operations: get, set, setex, del, keys, expire
 - Sorted sets: zadd, zremrangebyscore, zcard, zrange
 - Pipeline operations with proper transaction support
@@ -114,6 +121,7 @@ jest.mock('ioredis', () => {
 ### Test Coverage
 
 **Cache Helper Tests (14 cases)**:
+
 - ✅ Cache miss/hit scenarios
 - ✅ TTL and jitter application
 - ✅ Error fallback behavior
@@ -123,6 +131,7 @@ jest.mock('ioredis', () => {
 - ✅ Redis connection events
 
 **Cache Interceptor Tests (11 cases)**:
+
 - ✅ Rate limiting integration
 - ✅ Cache key building with user ID replacement
 - ✅ Query parameter inclusion
@@ -134,16 +143,19 @@ jest.mock('ioredis', () => {
 ## Performance & Reliability
 
 ### Cache Performance
+
 - **TTL with Jitter**: Prevents cache stampede by randomizing expiration
 - **Graceful Degradation**: Falls back to direct DB queries on Redis failures
 - **Selective Caching**: Only caches GET requests when feature flag enabled
 
 ### Rate Limiting Efficiency
+
 - **Sliding Window**: More accurate than fixed windows, O(log N) complexity
 - **Memory Efficient**: Automatic cleanup of expired entries
 - **Fail-Open**: Allows requests if rate limiting fails (high availability)
 
 ### Error Handling
+
 - **Structured Logging**: All cache/rate limit operations logged with context
 - **Circuit Breaker Pattern**: Fails gracefully on Redis unavailability
 - **Monitoring Ready**: Provides metrics for cache hit rates and rate limit effectiveness
@@ -151,6 +163,7 @@ jest.mock('ioredis', () => {
 ## Production Deployment
 
 ### Redis Setup
+
 ```yaml
 # docker-compose.yml
 services:
@@ -164,8 +177,9 @@ services:
 ```
 
 ### Monitoring Metrics
+
 - Cache hit rate percentage
-- Rate limit block frequency  
+- Rate limit block frequency
 - Redis connection health
 - Memory usage patterns
 

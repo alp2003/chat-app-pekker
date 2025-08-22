@@ -14,7 +14,9 @@ export function initializeTracing() {
       new HttpInstrumentation({
         // Don't instrument health check endpoints
         ignoreIncomingRequestHook: (req) => {
-          return req.url?.includes('/health') || req.url?.includes('/ping') || false;
+          return (
+            req.url?.includes('/health') || req.url?.includes('/ping') || false
+          );
         },
       }),
       new ExpressInstrumentation(),
@@ -31,7 +33,8 @@ export function initializeTracing() {
 
   // Handle graceful shutdown
   process.on('SIGTERM', () => {
-    sdk.shutdown()
+    sdk
+      .shutdown()
       .then(() => console.log('OpenTelemetry terminated'))
       .catch((error) => console.log('Error terminating OpenTelemetry', error))
       .finally(() => process.exit(0));

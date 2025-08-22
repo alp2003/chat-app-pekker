@@ -32,18 +32,18 @@ export class AuthService {
     displayName?: string;
   }) {
     const username = input.username.toLowerCase().trim();
-    
+
     // Use optimized select - only check existence
     const exists = await this.prisma.user.findUnique({
       where: { username },
       select: { id: true }, // Minimal select for existence check
     });
     if (exists) throw new BadRequestException('username_taken');
-    
+
     const isDev = this.configService.get('NODE_ENV') !== 'production';
     const argonOpts = getArgonOptions(isDev);
     const passwordHash = await argon2.hash(input.password, argonOpts);
-    
+
     const user = await this.prisma.user.create({
       data: {
         username,

@@ -139,7 +139,9 @@ export class SocketManager {
     this.onStatusChange(false);
   }
 
-  private async handleConnectError(err: Error & { data?: string; message?: string }): Promise<void> {
+  private async handleConnectError(
+    err: Error & { data?: string; message?: string }
+  ): Promise<void> {
     console.log('🔌 Socket connect error:', err?.message, err?.data);
     const msg = (err?.message || '').toLowerCase();
 

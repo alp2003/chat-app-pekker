@@ -16,7 +16,9 @@ export interface RateLimitOptions {
 @Injectable()
 export class CacheHelper {
   private readonly redis: Redis;
-  private readonly logger = loggerFactory.createLogger({ service: 'CacheHelper' });
+  private readonly logger = loggerFactory.createLogger({
+    service: 'CacheHelper',
+  });
 
   constructor(private configService: ConfigService) {
     this.redis = new Redis({
@@ -54,22 +56,27 @@ export class CacheHelper {
       this.logger.debug({ key }, 'Cache miss');
       // Fetch fresh data
       const data = await fetchFn();
-      
+
       // Calculate TTL with jitter
       const jitter = options.jitter || 0;
       const jitterRange = (options.ttl * jitter) / 100;
-      const actualTtl = options.ttl + Math.random() * jitterRange - jitterRange / 2;
-      
+      const actualTtl =
+        options.ttl + Math.random() * jitterRange - jitterRange / 2;
+
       // Store in cache
       await this.redis.setex(key, Math.floor(actualTtl), JSON.stringify(data));
-      
+
       return data;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error({
-        key,
-        error: errorMessage,
-      }, 'Cache operation failed, falling back to direct fetch');
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(
+        {
+          key,
+          error: errorMessage,
+        },
+        'Cache operation failed, falling back to direct fetch',
+      );
       // Fallback to direct fetch if cache fails
       return fetchFn();
     }
@@ -92,16 +99,17 @@ export class CacheHelper {
       pipe.zremrangebyscore(key, 0, windowStart);
       pipe.zcard(key);
       pipe.expire(key, options.window);
-      
+
       const results = await pipe.exec();
       const currentCount = (results?.[1]?.[1] as number) || 0;
 
       if (currentCount >= options.limit) {
         // Get the oldest entry to calculate reset time
         const oldestEntries = await this.redis.zrange(key, 0, 0, 'WITHSCORES');
-        const resetTime = oldestEntries.length > 0 && oldestEntries[1]
-          ? parseInt(oldestEntries[1]) + window
-          : now + window;
+        const resetTime =
+          oldestEntries.length > 0 && oldestEntries[1]
+            ? parseInt(oldestEntries[1]) + window
+            : now + window;
 
         return {
           allowed: false,
@@ -119,11 +127,15 @@ export class CacheHelper {
         resetTime: now + window,
       };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error({
-        key,
-        error: errorMessage,
-      }, 'Rate limit check failed, allowing request');
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(
+        {
+          key,
+          error: errorMessage,
+        },
+        'Rate limit check failed, allowing request',
+      );
       // Fail open - allow request if rate limiting fails
       return {
         allowed: true,
@@ -141,14 +153,21 @@ export class CacheHelper {
       const keys = await this.redis.keys(pattern);
       if (keys.length > 0) {
         await this.redis.del(...keys);
-        this.logger.debug({ pattern, keysCount: keys.length }, 'Cache invalidated');
+        this.logger.debug(
+          { pattern, keysCount: keys.length },
+          'Cache invalidated',
+        );
       }
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error({
-        pattern,
-        error: errorMessage,
-      }, 'Cache invalidation failed');
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(
+        {
+          pattern,
+          error: errorMessage,
+        },
+        'Cache invalidation failed',
+      );
     }
   }
 

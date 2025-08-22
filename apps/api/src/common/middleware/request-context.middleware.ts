@@ -12,9 +12,10 @@ export class RequestContextMiddleware implements NestMiddleware {
   use(req: RequestWithContext, res: Response, next: NextFunction) {
     // Generate or extract request ID
     req.requestId = (req.headers['x-request-id'] as string) || randomUUID();
-    
-    // Extract or generate correlation ID 
-    req.correlationId = (req.headers['x-correlation-id'] as string) || req.requestId;
+
+    // Extract or generate correlation ID
+    req.correlationId =
+      (req.headers['x-correlation-id'] as string) || req.requestId;
 
     // Set response headers for tracing
     res.setHeader('x-request-id', req.requestId);

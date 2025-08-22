@@ -4,17 +4,17 @@
 
 ### Core Redis Configuration
 
-| Variable | Description | Default | Example |
-|----------|-------------|---------|---------|
-| `REDIS_HOST` | Redis server hostname | `localhost` | `redis.example.com` |
-| `REDIS_PORT` | Redis server port | `6379` | `6380` |
-| `REDIS_PASSWORD` | Redis authentication password | - | `your-secure-password` |
+| Variable         | Description                   | Default     | Example                |
+| ---------------- | ----------------------------- | ----------- | ---------------------- |
+| `REDIS_HOST`     | Redis server hostname         | `localhost` | `redis.example.com`    |
+| `REDIS_PORT`     | Redis server port             | `6379`      | `6380`                 |
+| `REDIS_PASSWORD` | Redis authentication password | -           | `your-secure-password` |
 
 ### Feature Flags
 
-| Variable | Description | Default | Values |
-|----------|-------------|---------|---------|
-| `CACHE_TICKETS` | Enable/disable read-through caching for GET endpoints | `0` | `0` (disabled), `1` (enabled) |
+| Variable        | Description                                           | Default | Values                        |
+| --------------- | ----------------------------------------------------- | ------- | ----------------------------- |
+| `CACHE_TICKETS` | Enable/disable read-through caching for GET endpoints | `0`     | `0` (disabled), `1` (enabled) |
 
 ## Cache Configuration
 
@@ -53,12 +53,12 @@ When `CACHE_TICKETS=1`, the following GET endpoints are cached:
 
 ### Default Rate Limits
 
-| Endpoint | Pattern | Window | Limit | Description |
-|----------|---------|---------|--------|-------------|
-| `POST /chat/dm/start` | User-based | 60s | 10 | DM creation per user per minute |
-| `POST /chat/groups` | User-based | 300s | 5 | Group creation per user per 5 minutes |
-| `POST /auth/login` | IP-based | 300s | 10 | Login attempts per IP per 5 minutes |
-| `POST /auth/register` | IP-based | 3600s | 5 | Registration attempts per IP per hour |
+| Endpoint              | Pattern    | Window | Limit | Description                           |
+| --------------------- | ---------- | ------ | ----- | ------------------------------------- |
+| `POST /chat/dm/start` | User-based | 60s    | 10    | DM creation per user per minute       |
+| `POST /chat/groups`   | User-based | 300s   | 5     | Group creation per user per 5 minutes |
+| `POST /auth/login`    | IP-based   | 300s   | 10    | Login attempts per IP per 5 minutes   |
+| `POST /auth/register` | IP-based   | 3600s  | 5     | Registration attempts per IP per hour |
 
 ### Rate Limiting Headers
 
@@ -90,7 +90,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - '6379:6379'
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
     volumes:
@@ -141,6 +141,7 @@ CACHE_TICKETS=1
 ### Cache Hit Rates
 
 Monitor cache effectiveness:
+
 - Aim for >80% hit rate on frequently accessed data
 - Monitor cache miss patterns for optimization opportunities
 

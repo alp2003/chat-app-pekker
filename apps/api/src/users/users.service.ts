@@ -47,7 +47,7 @@ export class UsersService {
     // For search results, we could implement caching too, but it's less beneficial
     // since search queries are more dynamic
     const users = await this.prisma.user.findMany({
-      where: { 
+      where: {
         username: { startsWith: query },
         NOT: { id: _me }, // Exclude self in query rather than filtering after
       },

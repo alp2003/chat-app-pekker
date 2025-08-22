@@ -17,7 +17,7 @@ describe('Logger Factory', () => {
 
   it('should create base logger', () => {
     const logger = loggerFactory.getBaseLogger();
-    
+
     expect(logger).toBeDefined();
     expect(typeof logger.info).toBe('function');
   });

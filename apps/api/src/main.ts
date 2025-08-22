@@ -19,12 +19,12 @@ import { loggerFactory } from './common/logger/logger.factory';
 
 async function bootstrap() {
   const logger = loggerFactory.getBaseLogger();
-  
-  const app = await NestFactory.create(AppModule, { 
+
+  const app = await NestFactory.create(AppModule, {
     bufferLogs: true,
     logger: false, // Disable default NestJS logger
   });
-  
+
   const configService = app.get(ConfigService);
   app.use(cookieParser());
   app.enableCors({ origin: [/^http:\/\/localhost:\d+$/], credentials: true });
@@ -64,12 +64,15 @@ async function bootstrap() {
   const port = configService.get<number>('app.port');
   await app.listen(Number(port));
 
-  logger.info({
-    type: 'server_start',
-    port,
-    redisUrl: redisUrl ? 'configured' : 'not_configured',
-    environment: process.env.NODE_ENV,
-  }, `Server started on port ${port}`);
+  logger.info(
+    {
+      type: 'server_start',
+      port,
+      redisUrl: redisUrl ? 'configured' : 'not_configured',
+      environment: process.env.NODE_ENV,
+    },
+    `Server started on port ${port}`,
+  );
 }
 
 void bootstrap();

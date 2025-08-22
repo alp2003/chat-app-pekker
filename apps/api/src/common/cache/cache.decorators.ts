@@ -1,4 +1,8 @@
-import { SetMetadata, createParamDecorator, ExecutionContext } from '@nestjs/common';
+import {
+  SetMetadata,
+  createParamDecorator,
+  ExecutionContext,
+} from '@nestjs/common';
 import { Request } from 'express';
 
 // Metadata keys for decorators
@@ -39,22 +43,34 @@ export const RateLimit = (
   window: number,
   limit: number,
 ) =>
-  SetMetadata(RATE_LIMIT_KEY, { keyExtractor, window, limit } as RateLimitMetadata);
+  SetMetadata(RATE_LIMIT_KEY, {
+    keyExtractor,
+    window,
+    limit,
+  } as RateLimitMetadata);
 
 /**
  * Convenience decorators for common rate limiting patterns
  */
 export const RateLimitByUser = (window: number, limit: number) =>
-  RateLimit((req: Request & { user?: { id: string } }) => {
-    const user = req.user;
-    return `rate_limit:user:${user?.id || 'anonymous'}`;
-  }, window, limit);
+  RateLimit(
+    (req: Request & { user?: { id: string } }) => {
+      const user = req.user;
+      return `rate_limit:user:${user?.id || 'anonymous'}`;
+    },
+    window,
+    limit,
+  );
 
 export const RateLimitByIP = (window: number, limit: number) =>
-  RateLimit((req: Request) => {
-    const ip = req.ip || req.connection.remoteAddress || 'unknown';
-    return `rate_limit:ip:${ip}`;
-  }, window, limit);
+  RateLimit(
+    (req: Request) => {
+      const ip = req.ip || req.connection.remoteAddress || 'unknown';
+      return `rate_limit:ip:${ip}`;
+    },
+    window,
+    limit,
+  );
 
 /**
  * Parameter decorator to extract user ID from request

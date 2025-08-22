@@ -75,13 +75,13 @@ describe('UsersController Logging', () => {
       const loggerInstance = loggerSpy.mock.results[0]?.value;
       expect(loggerInstance).toBeDefined();
       expect(loggerInstance.info).toHaveBeenCalledTimes(2);
-      
+
       // Check request log
       expect(loggerInstance.info).toHaveBeenCalledWith(
         { userId, type: 'user_profile_request' },
-        'Fetching user profile'
+        'Fetching user profile',
       );
-      
+
       // Check success log
       expect(loggerInstance.info).toHaveBeenCalledWith(
         {
@@ -90,7 +90,7 @@ describe('UsersController Logging', () => {
           hasDisplayName: true,
           hasAvatar: false,
         },
-        'User profile retrieved successfully'
+        'User profile retrieved successfully',
       );
     });
   });
@@ -123,7 +123,7 @@ describe('UsersController Logging', () => {
       const loggerInstance = loggerSpy.mock.results[0]?.value;
       expect(loggerInstance).toBeDefined();
       expect(loggerInstance.info).toHaveBeenCalledTimes(2);
-      
+
       // Check request log
       expect(loggerInstance.info).toHaveBeenCalledWith(
         {
@@ -131,16 +131,16 @@ describe('UsersController Logging', () => {
           queryLength: query.length,
           hasQuery: true,
         },
-        'User search requested'
+        'User search requested',
       );
-      
+
       // Check success log
       expect(loggerInstance.info).toHaveBeenCalledWith(
         {
           type: 'user_search_success',
           resultCount: expectedResults.length,
         },
-        'User search completed'
+        'User search completed',
       );
     });
 
@@ -165,19 +165,19 @@ describe('UsersController Logging', () => {
       const loggerInstance = loggerSpy.mock.results[0]?.value;
       expect(loggerInstance).toBeDefined();
       expect(loggerInstance.info).toHaveBeenCalledTimes(2);
-      
+
       expect(loggerInstance.info).toHaveBeenCalledWith(
         {
           type: 'user_search_request',
           queryLength: 0,
           hasQuery: false,
         },
-        'User search requested'
+        'User search requested',
       );
-      
+
       expect(loggerInstance.info).toHaveBeenCalledWith(
         { type: 'user_search_empty' },
-        'Empty search query, returning empty results'
+        'Empty search query, returning empty results',
       );
     });
   });

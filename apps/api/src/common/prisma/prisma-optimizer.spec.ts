@@ -23,10 +23,7 @@ describe('PrismaOptimizer', () => {
         take: 3, // take + 1
         cursor: undefined,
         where: undefined,
-        orderBy: [
-          { createdAt: 'asc' },
-          { id: 'asc' },
-        ],
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       });
     });
 
@@ -52,10 +49,7 @@ describe('PrismaOptimizer', () => {
         take: 3,
         cursor: { id: '2' },
         where: { id: { gt: '2' } },
-        orderBy: [
-          { createdAt: 'asc' },
-          { id: 'asc' },
-        ],
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       });
     });
 
@@ -78,10 +72,7 @@ describe('PrismaOptimizer', () => {
         take: 3,
         cursor: { id: '3' },
         where: { id: { lt: '3' } },
-        orderBy: [
-          { createdAt: 'desc' },
-          { id: 'desc' },
-        ],
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       });
     });
   });
@@ -116,7 +107,7 @@ describe('PrismaOptimizer', () => {
       await PrismaOptimizer.executeTransaction(
         mockPrisma,
         mockOperations,
-        15000
+        15000,
       );
 
       expect(mockPrisma.$transaction).toHaveBeenCalledWith(mockOperations, {
@@ -140,7 +131,9 @@ describe('PrismaOptimizer', () => {
         avatar: true,
       });
 
-      expect(PrismaOptimizer.selects.message.withSender).toHaveProperty('sender');
+      expect(PrismaOptimizer.selects.message.withSender).toHaveProperty(
+        'sender',
+      );
       expect(PrismaOptimizer.selects.message.withSender.sender).toEqual({
         select: { id: true, username: true },
       });
