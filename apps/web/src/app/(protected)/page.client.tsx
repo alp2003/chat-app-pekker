@@ -99,7 +99,11 @@ export default function CleanProtectedPageClient({
       onReact={handleReactToMessage}
       onPickImage={() => {}} // TODO: Implement file upload
       forceScrollToBottom={forceScrollToBottom}
-      rightHeaderSlot={<ChatHeaderActions />}
+      rightHeaderSlot={
+        <ChatHeaderActions 
+          currentUser={user ? { username: user.username, displayName: user.username } : undefined} 
+        />
+      }
       sidebarTopSlot={
         <NewChatButton onConversationCreated={handleConversationCreated} />
       }

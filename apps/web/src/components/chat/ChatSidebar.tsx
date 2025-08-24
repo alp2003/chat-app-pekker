@@ -169,7 +169,7 @@ export function DesktopSidebar({
   }, [convos, searchQuery]);
 
   return (
-    <div className={`w-[320px] shrink-0 flex-col border-r ${forceVisible ? 'flex' : 'hidden md:flex'}`}>
+    <div className={`w-[320px] shrink-0 flex-col border-r relative h-full ${forceVisible ? 'flex' : 'hidden md:flex'}`}>
       <div className="p-3">
         <div className="relative">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -192,7 +192,7 @@ export function DesktopSidebar({
         {topSlot && <div className="mt-2">{topSlot}</div>}
       </div>
       <Separator />
-      <ScrollArea className="h-[calc(100dvh-64px)] p-2">
+      <ScrollArea className="flex-1 p-2 pb-[68px]">
         <div className="space-y-0">
           {filteredConvos.length > 0 ? (
             searchQuery.trim() ? (
@@ -267,7 +267,9 @@ export function DesktopSidebar({
           ) : null}
         </div>
       </ScrollArea>
-      <SidebarFooter currentUser={currentUser} />
+      <div className="absolute bottom-0 left-0 right-0 z-10">
+        <SidebarFooter currentUser={currentUser} />
+      </div>
     </div>
   );
 }
@@ -346,7 +348,7 @@ export function MobileSidebar({
           <Menu className="h-5 w-5" />
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="w-[320px] p-0">
+      <SheetContent side="left" className="w-[320px] p-0 relative">
         <SheetHeader className="px-3 py-2">
           <SheetTitle>Chats</SheetTitle>
         </SheetHeader>
@@ -371,7 +373,7 @@ export function MobileSidebar({
           </div>
         </div>
         <Separator />
-        <ScrollArea className="h-[calc(100dvh-80px)] p-2">
+        <ScrollArea className="h-[calc(100dvh-80px-60px)] p-2 pb-[68px]">
           <div className="space-y-0">
             {filteredConvos.length > 0 ? (
               searchQuery.trim() ? (
@@ -446,7 +448,9 @@ export function MobileSidebar({
             ) : null}
           </div>
         </ScrollArea>
-        <SidebarFooter currentUser={currentUser} />
+        <div className="absolute bottom-0 left-0 right-0 z-10">
+          <SidebarFooter currentUser={currentUser} />
+        </div>
       </SheetContent>
     </Sheet>
   );

@@ -1,19 +1,23 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { User, LogOut, Palette, Settings, ChevronUp } from 'lucide-react';
+import { User, LogOut, Palette, Settings, ChevronDown, ChevronRight } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useLogout } from '@/hooks/useLogout';
 import { telegramThemes, applyTheme, type TelegramTheme } from '@/lib/theme';
 
-interface SidebarFooterProps {
-  currentUser?: {
+interface ProfileDropdownProps {
+  user: {
     username: string;
     displayName?: string;
   };
+  onProfileSettings?: () => void;
 }
 
-export function SidebarFooter({ currentUser }: SidebarFooterProps) {
+export default function ProfileDropdown({ 
+  user, 
+  onProfileSettings 
+}: ProfileDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [showThemeMenu, setShowThemeMenu] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -22,15 +26,13 @@ export function SidebarFooter({ currentUser }: SidebarFooterProps) {
   const [customTheme, setCustomTheme] = useState<TelegramTheme>('system');
   const [mounted, setMounted] = useState(false);
 
-  // Debug logging
-  console.log('🦶 SidebarFooter rendering with currentUser:', currentUser);
-
   // Initialize theme from localStorage on mount
   useEffect(() => {
     setMounted(true);
     const savedTheme = localStorage.getItem('telegram-theme') as TelegramTheme;
     if (savedTheme && telegramThemes[savedTheme]) {
       setCustomTheme(savedTheme);
+      // Apply the saved theme
       if (savedTheme !== 'system') {
         setTimeout(() => applyTheme(savedTheme), 100);
       }
@@ -76,12 +78,14 @@ export function SidebarFooter({ currentUser }: SidebarFooterProps) {
     setCustomTheme(themeName);
     setShowThemeMenu(false);
     
+    // Save to localStorage for persistence
     localStorage.setItem('telegram-theme', themeName);
     
     if (themeName === 'system') {
       setTheme('system');
+      // Clear any custom colors for system theme
       const root = document.documentElement;
-      const theme = telegramThemes['day-classic'];
+      const theme = telegramThemes['day-classic']; // fallback
       Object.keys(theme.colors).forEach(property => {
         root.style.removeProperty(property);
       });
@@ -92,7 +96,7 @@ export function SidebarFooter({ currentUser }: SidebarFooterProps) {
 
   const handleProfileSettings = () => {
     setIsOpen(false);
-    console.log('Profile settings clicked from sidebar');
+    onProfileSettings?.();
   };
 
   // Generate avatar from username initials
@@ -105,23 +109,62 @@ export function SidebarFooter({ currentUser }: SidebarFooterProps) {
       .slice(0, 2);
   };
 
-  if (!currentUser) {
-    return null;
-  }
-
-  const displayName = currentUser.displayName || currentUser.username;
+  const displayName = user.displayName || user.username;
   const initials = getInitials(displayName);
 
   return (
-    <div className="relative bg-background" ref={dropdownRef}>
-      {/* Dropdown Menu - positioned above the footer */}
+    <div className="relative" ref={dropdownRef}>
+      {/* Profile Button */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2 p-2 rounded-full bg-card hover:bg-accent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-background border border-border"
+        aria-expanded={isOpen}
+        aria-haspopup="true"
+      >
+        {/* Avatar */}
+        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent via-primary to-accent/80 flex items-center justify-center text-accent-foreground text-sm font-semibold shadow-sm">
+          {initials}
+        </div>
+        
+        {/* Username (hidden on mobile) */}
+        <span className="hidden sm:block text-sm font-medium text-foreground">
+          {displayName}
+        </span>
+        
+        {/* Chevron */}
+        <ChevronDown 
+          className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${
+            isOpen ? 'transform rotate-180' : ''
+          }`} 
+        />
+      </button>
+
+      {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute bottom-full left-0 right-0 mb-1 bg-popover rounded-t-lg shadow-xl border border-border z-[9999] min-h-[44px] max-h-[400px] overflow-hidden">
-          {/* Profile Settings */}
-          <div className="p-2">
+        <div className="absolute right-0 mt-2 w-56 bg-popover rounded-lg shadow-lg border border-border z-50">
+          {/* User Info Header */}
+          <div className="px-4 py-3 border-b border-border">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent via-primary to-accent/80 flex items-center justify-center text-accent-foreground font-semibold shadow-sm">
+                {initials}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-popover-foreground truncate">
+                  {displayName}
+                </p>
+                <p className="text-xs text-muted-foreground truncate">
+                  @{user.username}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Menu Items */}
+          <div className="py-1">
+            {/* Profile Settings */}
             <button
               onClick={handleProfileSettings}
-              className="flex items-center gap-3 w-full px-3 py-2 text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground transition-colors duration-150 rounded-md"
+              className="flex items-center gap-3 w-full px-4 py-2 text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground transition-colors duration-150"
             >
               <Settings className="w-4 h-4" />
               Profile Settings
@@ -131,27 +174,27 @@ export function SidebarFooter({ currentUser }: SidebarFooterProps) {
             <div className="relative">
               <button
                 onClick={() => setShowThemeMenu(!showThemeMenu)}
-                className="flex items-center justify-between w-full px-3 py-2 text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground transition-colors duration-150 rounded-md"
+                className="flex items-center justify-between w-full px-4 py-2 text-sm text-popover-foreground hover:bg-accent hover:text-accent-foreground transition-colors duration-150"
               >
                 <div className="flex items-center gap-3">
                   <Palette className="w-4 h-4" />
                   Themes
                 </div>
-                <ChevronUp 
+                <ChevronRight 
                   className={`w-4 h-4 transition-transform duration-200 ${
-                    showThemeMenu ? 'transform rotate-180' : ''
+                    showThemeMenu ? 'transform rotate-90' : ''
                   }`} 
                 />
               </button>
 
               {/* Theme Submenu */}
               {showThemeMenu && (
-                <div className="ml-6 mt-1 space-y-1 max-h-48 overflow-y-auto">
+                <div className="ml-6 mt-1 space-y-1">
                   {Object.entries(telegramThemes).map(([key, themeData]) => (
                     <button
                       key={key}
                       onClick={() => handleThemeSelect(key as TelegramTheme)}
-                      className={`flex items-center justify-between w-full px-3 py-1.5 text-xs transition-colors duration-150 rounded-md ${
+                      className={`flex items-center justify-between w-full px-4 py-1.5 text-xs transition-colors duration-150 rounded ${
                         customTheme === key
                           ? 'bg-primary/10 text-primary'
                           : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
@@ -179,13 +222,13 @@ export function SidebarFooter({ currentUser }: SidebarFooterProps) {
             </div>
 
             {/* Divider */}
-            <div className="h-px bg-border my-2" />
+            <div className="h-px bg-border my-1" />
 
             {/* Logout */}
             <button
               onClick={handleLogout}
               disabled={isLoggingOut}
-              className="flex items-center gap-3 w-full px-3 py-2 text-sm text-destructive hover:bg-destructive/10 hover:text-destructive transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed rounded-md"
+              className="flex items-center gap-3 w-full px-4 py-2 text-sm text-destructive hover:bg-destructive/10 hover:text-destructive transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <LogOut className={`w-4 h-4 ${isLoggingOut ? 'animate-spin' : ''}`} />
               {isLoggingOut ? 'Signing out...' : 'Sign out'}
@@ -193,41 +236,6 @@ export function SidebarFooter({ currentUser }: SidebarFooterProps) {
           </div>
         </div>
       )}
-
-      {/* Footer Button - same height as message input */}
-      <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-[5px]">
-        <button
-          onClick={() => {
-            console.log('🔘 Profile button clicked, isOpen:', isOpen);
-            setIsOpen(!isOpen);
-          }}
-          className="flex items-center gap-3 w-full px-4 py-3 min-h-[44px] bg-card hover:bg-accent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset border-l-0 border-l-primary/20 rounded-2xl"
-          aria-expanded={isOpen}
-          aria-haspopup="true"
-        >
-          {/* Avatar */}
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent via-primary to-accent/80 flex items-center justify-center text-accent-foreground text-sm font-semibold shadow-sm flex-shrink-0">
-            {initials}
-          </div>
-          
-          {/* User info */}
-          <div className="flex-1 min-w-0 text-left">
-            <div className="text-sm font-medium text-foreground truncate">
-              {displayName}
-            </div>
-            <div className="text-xs text-muted-foreground truncate">
-              @{currentUser.username}
-            </div>
-          </div>
-          
-          {/* Chevron */}
-          <ChevronUp 
-            className={`w-4 h-4 text-muted-foreground transition-transform duration-200 flex-shrink-0 ${
-              isOpen ? 'transform rotate-180' : ''
-            }`} 
-          />
-        </button>
-      </div>
     </div>
   );
 }
