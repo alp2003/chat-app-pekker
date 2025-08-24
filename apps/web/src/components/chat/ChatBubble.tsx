@@ -15,6 +15,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Reply, Copy, SmilePlus, Trash2 } from 'lucide-react';
+import { cn, themeUtils } from '@/lib/theme';
 
 type BubbleProps = {
   m: Message;
@@ -135,11 +136,13 @@ export default function ChatBubble({
 
         {/* Bubble */}
         <div
-          className={`rounded-2xl px-3 py-2 shadow-sm ${
+          className={cn(
+            'rounded-2xl px-3 py-2 shadow-sm',
+            themeUtils.radius.lg,
             mine
-              ? 'bg-primary text-primary-foreground rounded-br-md'
-              : 'bg-muted rounded-bl-md'
-          }`}
+              ? cn(themeUtils.chat.myMessage, 'rounded-br-md')
+              : cn(themeUtils.chat.theirMessage, 'rounded-bl-md')
+          )}
         >
           {/* Attachment preview */}
           {m.fileUrl && (
@@ -194,40 +197,46 @@ export default function ChatBubble({
             } z-20 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100`}
           >
             {/* Reply */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className="pointer-events-auto rounded-md bg-background/90 px-2 py-1 text-xs shadow hover:bg-slate-100"
-                  onClick={() => onReply?.(m)}
-                >
-                  <span className="inline-flex items-center gap-1">
-                    <Reply className="h-3 w-3" /> Reply
-                  </span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Reply</TooltipContent>
-            </Tooltip>
+
+            <button
+              className={cn(
+                'pointer-events-auto px-2 py-1 text-xs shadow',
+                themeUtils.radius.md,
+                'bg-background/90 hover:bg-accent transition-colors'
+              )}
+              onClick={() => onReply?.(m)}
+            >
+              <span className="inline-flex items-center gap-1">
+                <Reply className="h-3 w-3" /> Reply
+              </span>
+            </button>
 
             {/* Copy */}
-            <Tooltip>
-              <TooltipTrigger asChild>
+          
                 <button
-                  className="pointer-events-auto rounded-md bg-background/90 px-2 py-1 text-xs shadow hover:bg-slate-100"
+                  className={cn(
+                    'pointer-events-auto px-2 py-1 text-xs shadow',
+                    themeUtils.radius.md,
+                    'bg-background/90 hover:bg-accent transition-colors'
+                  )}
                   onClick={copyText}
                 >
+                  
                   <span className="inline-flex items-center gap-1">
                     <Copy className="h-3 w-3" /> Copy
                   </span>
                 </button>
-              </TooltipTrigger>
-              <TooltipContent>Copy</TooltipContent>
-            </Tooltip>
+           
 
             {/* React (stable popover) */}
             <Popover>
               <PopoverTrigger asChild>
                 <button
-                  className="pointer-events-auto rounded-md bg-background/90 px-2 py-1 text-xs shadow hover:bg-slate-100"
+                  className={cn(
+                    'pointer-events-auto px-2 py-1 text-xs shadow',
+                    themeUtils.radius.md,
+                    'bg-background/90 hover:bg-accent transition-colors'
+                  )}
                   title="React"
                 >
                   <span className="inline-flex items-center gap-1">
@@ -238,13 +247,17 @@ export default function ChatBubble({
               <PopoverContent
                 side={mine ? 'bottom' : 'bottom'}
                 align={mine ? 'end' : 'start'}
-                className="z-30 w-auto max-w-max whitespace-nowrap rounded-xl border p-1 shadow"
+                className="z-30 w-auto max-w-max whitespace-nowrap border p-1 shadow rounded-xl"
               >
                 {['👍', '❤️', '😂', '😮', '🙏'].map(e => (
                   <button
                     key={e}
                     onClick={() => onReact?.(m, e)}
-                    className="rounded-lg px-2 py-1 text-base hover:bg-muted transition"
+                    className={cn(
+                      'px-2 py-1 text-base transition-colors',
+                      themeUtils.radius.lg,
+                      'hover:bg-muted'
+                    )}
                   >
                     {e}
                   </button>
@@ -257,7 +270,11 @@ export default function ChatBubble({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
-                    className="pointer-events-auto rounded-md bg-background/90 px-2 py-1 text-xs shadow hover:bg-slate-100"
+                    className={cn(
+                      'pointer-events-auto px-2 py-1 text-xs shadow',
+                      themeUtils.radius.md,
+                      'bg-background/90 hover:bg-destructive hover:text-destructive-foreground transition-colors'
+                    )}
                     onClick={() => onDelete?.(m)}
                   >
                     <span className="inline-flex items-center gap-1">
@@ -288,11 +305,14 @@ export default function ChatBubble({
                 <button
                   key={i}
                   onClick={() => onReact?.(m, r.emoji)}
-                  className={`rounded-full border px-2 py-[2px] transition-colors hover:bg-muted/50 ${
+                  className={cn(
+                    'border px-2 py-[2px] transition-colors',
+                    themeUtils.radius.full,
+                    'hover:bg-muted/50',
                     userReacted
-                      ? 'bg-blue-100 border-blue-300 dark:bg-blue-900/30 dark:border-blue-600'
+                      ? 'bg-primary/20 border-primary/50 text-primary'
                       : 'bg-background/60 hover:bg-background/80'
-                  }`}
+                  )}
                   title={r.by?.join(', ')}
                 >
                   {r.emoji} {r.count ?? 1}

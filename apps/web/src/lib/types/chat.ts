@@ -30,6 +30,7 @@ export type Conversation = {
   name: string;
   avatar?: string | null;
   last?: string | null;
+  lastMessageAt?: string | null; // ISO timestamp for sorting
   unread?: number;
   online?: boolean;
   members?: Member[]; // <-- make optional so optimistic items compile

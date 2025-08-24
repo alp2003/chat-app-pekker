@@ -16,6 +16,7 @@ export interface Conversation {
   avatar: string | null;
   isGroup: boolean;
   last: string | null;
+  lastMessageAt: string | null; // ISO timestamp for sorting
   members: ConversationMember[];
 }
 

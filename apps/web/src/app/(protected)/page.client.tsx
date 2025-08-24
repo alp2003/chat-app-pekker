@@ -5,6 +5,7 @@ import { useSocket } from '@/providers/SocketProvider';
 import useChatStore from '@/stores/chatStore';
 import ChatView from '@/components/chat/ChatView';
 import NewChatButton from '@/components/chat/NewChatButton';
+import { TelegramThemePicker } from '@/components/telegram-theme-picker';
 import { listConversations } from '@/lib/api';
 import type { Message } from '@/lib/types/chat';
 import type { Conversation } from '@/lib/types/chat';
@@ -97,6 +98,7 @@ export default function CleanProtectedPageClient({
       onReact={handleReactToMessage}
       onPickImage={() => {}} // TODO: Implement file upload
       forceScrollToBottom={forceScrollToBottom}
+      rightHeaderSlot={<TelegramThemePicker />}
       sidebarTopSlot={
         <NewChatButton onConversationCreated={handleConversationCreated} />
       }

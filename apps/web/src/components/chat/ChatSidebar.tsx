@@ -36,17 +36,19 @@ function ConversationItem({
     );
     const parts = text.split(regex);
 
-    return parts.map((part, index) => {
+    return parts.map((part, i) => {
       const isMatch = regex.test(part);
-      return isMatch ? (
+      return (
         <span
-          key={index}
-          className="bg-yellow-200 dark:bg-yellow-800/50 text-foreground"
+          key={i}
+          className={
+            isMatch
+              ? 'bg-yellow-200 dark:bg-yellow-900/40 text-yellow-900 dark:text-yellow-200 px-0.5 rounded-sm font-medium'
+              : ''
+          }
         >
           {part}
         </span>
-      ) : (
-        part
       );
     });
   };
@@ -54,8 +56,8 @@ function ConversationItem({
   return (
     <button
       onClick={onClick}
-      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition
-      ${active ? 'bg-accent' : 'hover:bg-accent/50'}`}
+      className={`flex w-full items-center gap-3 px-3 py-3 text-left transition border-b border-border/20
+      ${active ? 'bg-accent' : 'hover:bg-accent/50'} last:border-b-0`}
     >
       <Avatar>
         {c.avatar ? (
@@ -109,20 +111,48 @@ export function DesktopSidebar({
     }))
   );
 
-  // Filter conversations based on search query (like WhatsApp)
-  const filteredConvos = useMemo(() => {
-    if (!searchQuery.trim()) return convos;
+  // Filter and group conversations based on search query and unread status
+  const { filteredConvos, groupedConvos } = useMemo(() => {
+    let filtered = convos;
+    
+    // Apply search filter if there's a search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = convos.filter(convo => {
+        // Search in conversation name
+        const nameMatch = convo.name.toLowerCase().includes(query);
 
-    const query = searchQuery.toLowerCase().trim();
-    return convos.filter(convo => {
-      // Search in conversation name
-      const nameMatch = convo.name.toLowerCase().includes(query);
+        // Search in last message
+        const messageMatch = convo.last?.toLowerCase().includes(query) ?? false;
 
-      // Search in last message
-      const messageMatch = convo.last?.toLowerCase().includes(query) ?? false;
+        return nameMatch || messageMatch;
+      });
+    }
 
-      return nameMatch || messageMatch;
-    });
+    // Sort by latest message timestamp first
+    const sortByTimestamp = (conversations: typeof filtered) => {
+      return [...conversations].sort((a, b) => {
+        // Conversations without messages go to the bottom
+        if (!a.lastMessageAt && !b.lastMessageAt) return 0;
+        if (!a.lastMessageAt) return 1;
+        if (!b.lastMessageAt) return -1;
+        
+        // Sort by timestamp descending (newest first)
+        return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
+      });
+    };
+
+    // Group conversations by unread status
+    const unreadConvos = sortByTimestamp(filtered.filter(c => c.unread && c.unread > 0));
+    const recentConvos = sortByTimestamp(filtered.filter(c => !c.unread || c.unread === 0));
+
+    return {
+      filteredConvos: filtered,
+      groupedConvos: {
+        unread: unreadConvos,
+        recent: recentConvos,
+      },
+    };
   }, [convos, searchQuery]);
 
   return (
@@ -149,17 +179,67 @@ export function DesktopSidebar({
       </div>
       <Separator />
       <ScrollArea className="h-[calc(100dvh-64px)] p-2">
-        <div className="space-y-1">
+        <div className="space-y-0">
           {filteredConvos.length > 0 ? (
-            filteredConvos.map(c => (
-              <ConversationItem
-                key={c.id}
-                c={c}
-                active={c.id === activeId}
-                onClick={() => setActive(c.id)}
-                searchQuery={searchQuery}
-              />
-            ))
+            searchQuery.trim() ? (
+              // When searching, show flat list without separators
+              filteredConvos.map(c => (
+                <ConversationItem
+                  key={c.id}
+                  c={c}
+                  active={c.id === activeId}
+                  onClick={() => setActive(c.id)}
+                  searchQuery={searchQuery}
+                />
+              ))
+            ) : (
+              // When not searching, show grouped conversations with separators
+              <>
+                {groupedConvos.unread.length > 0 && (
+                  <>
+                    <div className="px-2 py-3 bg-muted/20 border-b border-border/10">
+                      <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Unread ({groupedConvos.unread.length})
+                      </h3>
+                    </div>
+                    <div className="border-b border-border/10">
+                      {groupedConvos.unread.map(c => (
+                        <ConversationItem
+                          key={c.id}
+                          c={c}
+                          active={c.id === activeId}
+                          onClick={() => setActive(c.id)}
+                          searchQuery={searchQuery}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {groupedConvos.recent.length > 0 && (
+                  <>
+                    {groupedConvos.unread.length > 0 && (
+                      <div className="px-2 py-3 bg-muted/20 border-b border-border/10 mt-2">
+                        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                          Recent ({groupedConvos.recent.length})
+                        </h3>
+                      </div>
+                    )}
+                    <div className="border-b border-border/10">
+                      {groupedConvos.recent.map(c => (
+                        <ConversationItem
+                          key={c.id}
+                          c={c}
+                          active={c.id === activeId}
+                          onClick={() => setActive(c.id)}
+                          searchQuery={searchQuery}
+                        />
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
+            )
           ) : searchQuery ? (
             <div className="flex flex-col items-center justify-center py-8 text-center">
               <Search className="h-12 w-12 text-muted-foreground mb-3" />
@@ -188,20 +268,48 @@ export function MobileSidebar({
 }) {
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Filter conversations based on search query (like WhatsApp)
-  const filteredConvos = useMemo(() => {
-    if (!searchQuery.trim()) return convos;
+  // Filter and group conversations based on search query and unread status
+  const { filteredConvos, groupedConvos } = useMemo(() => {
+    let filtered = convos;
+    
+    // Apply search filter if there's a search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = convos.filter(convo => {
+        // Search in conversation name
+        const nameMatch = convo.name.toLowerCase().includes(query);
 
-    const query = searchQuery.toLowerCase().trim();
-    return convos.filter(convo => {
-      // Search in conversation name
-      const nameMatch = convo.name.toLowerCase().includes(query);
+        // Search in last message
+        const messageMatch = convo.last?.toLowerCase().includes(query) ?? false;
 
-      // Search in last message
-      const messageMatch = convo.last?.toLowerCase().includes(query) ?? false;
+        return nameMatch || messageMatch;
+      });
+    }
 
-      return nameMatch || messageMatch;
-    });
+    // Sort by latest message timestamp first
+    const sortByTimestamp = (conversations: typeof filtered) => {
+      return [...conversations].sort((a, b) => {
+        // Conversations without messages go to the bottom
+        if (!a.lastMessageAt && !b.lastMessageAt) return 0;
+        if (!a.lastMessageAt) return 1;
+        if (!b.lastMessageAt) return -1;
+        
+        // Sort by timestamp descending (newest first)
+        return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
+      });
+    };
+
+    // Group conversations by unread status
+    const unreadConvos = sortByTimestamp(filtered.filter(c => c.unread && c.unread > 0));
+    const recentConvos = sortByTimestamp(filtered.filter(c => !c.unread || c.unread === 0));
+
+    return {
+      filteredConvos: filtered,
+      groupedConvos: {
+        unread: unreadConvos,
+        recent: recentConvos,
+      },
+    };
   }, [convos, searchQuery]);
 
   return (
@@ -236,17 +344,67 @@ export function MobileSidebar({
         </div>
         <Separator />
         <ScrollArea className="h-[calc(100dvh-80px)] p-2">
-          <div className="space-y-1">
+          <div className="space-y-0">
             {filteredConvos.length > 0 ? (
-              filteredConvos.map(c => (
-                <ConversationItem
-                  key={c.id}
-                  c={c}
-                  active={c.id === activeId}
-                  onClick={() => setActive(c.id)}
-                  searchQuery={searchQuery}
-                />
-              ))
+              searchQuery.trim() ? (
+                // When searching, show flat list without separators
+                filteredConvos.map(c => (
+                  <ConversationItem
+                    key={c.id}
+                    c={c}
+                    active={c.id === activeId}
+                    onClick={() => setActive(c.id)}
+                    searchQuery={searchQuery}
+                  />
+                ))
+              ) : (
+                // When not searching, show grouped conversations with separators
+                <>
+                  {groupedConvos.unread.length > 0 && (
+                    <>
+                      <div className="px-2 py-3 bg-muted/20 border-b border-border/10">
+                        <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                          Unread ({groupedConvos.unread.length})
+                        </h3>
+                      </div>
+                      <div className="border-b border-border/10">
+                        {groupedConvos.unread.map(c => (
+                          <ConversationItem
+                            key={c.id}
+                            c={c}
+                            active={c.id === activeId}
+                            onClick={() => setActive(c.id)}
+                            searchQuery={searchQuery}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {groupedConvos.recent.length > 0 && (
+                    <>
+                      {groupedConvos.unread.length > 0 && (
+                        <div className="px-2 py-3 bg-muted/20 border-b border-border/10 mt-2">
+                          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                            Recent ({groupedConvos.recent.length})
+                          </h3>
+                        </div>
+                      )}
+                      <div className="border-b border-border/10">
+                        {groupedConvos.recent.map(c => (
+                          <ConversationItem
+                            key={c.id}
+                            c={c}
+                            active={c.id === activeId}
+                            onClick={() => setActive(c.id)}
+                            searchQuery={searchQuery}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </>
+              )
             ) : searchQuery ? (
               <div className="flex flex-col items-center justify-center py-8 text-center">
                 <Search className="h-12 w-12 text-muted-foreground mb-3" />

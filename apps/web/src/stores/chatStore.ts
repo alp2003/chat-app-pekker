@@ -250,6 +250,9 @@ const useChatStore = create<ChatStore>()(
         state._addOptimisticMessage(optimisticMessage);
         state._triggerScrollToBottom();
 
+        // Update conversation preview immediately for our own messages
+        state._updateConversationPreview(state.activeRoomId, content);
+
         // Send to server with correct field name
         socket.emit('msg:send', {
           roomId: state.activeRoomId, // Changed from conversationId to roomId
@@ -855,16 +858,26 @@ const useChatStore = create<ChatStore>()(
                 return {
                   ...convo,
                   last: content,
+                  lastMessageAt: new Date().toISOString(), // Add current timestamp for sorting
                 };
               }
               return convo;
+            });
+
+            // Sort conversations by latest message timestamp (most recent first)
+            updatedConversations.sort((a, b) => {
+              if (!a.lastMessageAt && !b.lastMessageAt) return 0;
+              if (!a.lastMessageAt) return 1;
+              if (!b.lastMessageAt) return -1;
+              return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
             });
 
             console.log(
               '🔄 After updating conversations. Changes made:',
               updatedConversations.some(
                 (convo, index) =>
-                  convo.last !== state.conversations[index]?.last
+                  convo.last !== state.conversations[index]?.last ||
+                  convo.lastMessageAt !== state.conversations[index]?.lastMessageAt
               )
             );
             console.log(

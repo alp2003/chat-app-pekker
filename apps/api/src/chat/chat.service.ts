@@ -182,7 +182,6 @@ export class ChatService {
           },
         },
       },
-      orderBy: { room: { messages: { _count: 'desc' } } }, // Order by activity
     });
 
     const conversations = memberships.map((m) => {
@@ -207,11 +206,23 @@ export class ChatService {
         avatar,
         isGroup: room.isGroup,
         last: lastMsg?.content || null,
+        lastMessageAt: lastMsg?.createdAt ? lastMsg.createdAt.toISOString() : null, // Convert Date to ISO string
         members: room.members.map((mem) => ({
           id: mem.user.id,
           username: mem.user.username,
         })),
       };
+    });
+
+    // Sort conversations by latest message timestamp (most recent first)
+    conversations.sort((a, b) => {
+      // Conversations without messages go to the bottom
+      if (!a.lastMessageAt && !b.lastMessageAt) return 0;
+      if (!a.lastMessageAt) return 1;
+      if (!b.lastMessageAt) return -1;
+      
+      // Sort by timestamp descending (newest first)
+      return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
     });
 
     // Cache for 5 minutes
