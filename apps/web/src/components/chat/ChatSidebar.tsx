@@ -14,6 +14,7 @@ import {
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { Search, Menu, X } from 'lucide-react';
+import { SidebarFooter } from './SidebarFooter';
 
 function ConversationItem({
   c,
@@ -93,11 +94,15 @@ export function DesktopSidebar({
   activeId,
   setActive,
   topSlot,
+  currentUser,
+  forceVisible = false, // New prop to override hidden state for mobile drawer
 }: {
   convos: Conversation[];
   activeId?: string;
   setActive: (id: string) => void;
   topSlot?: React.ReactNode; // e.g. new chat button
+  currentUser?: { username: string; displayName?: string };
+  forceVisible?: boolean;
 }) {
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -110,6 +115,14 @@ export function DesktopSidebar({
       last: c.last,
     }))
   );
+
+  // Additional mobile debugging
+  console.log('🔍 DesktopSidebar debug:', {
+    convosLength: convos.length,
+    activeId,
+    topSlot: !!topSlot,
+    searchQuery,
+  });
 
   // Filter and group conversations based on search query and unread status
   const { filteredConvos, groupedConvos } = useMemo(() => {
@@ -156,7 +169,7 @@ export function DesktopSidebar({
   }, [convos, searchQuery]);
 
   return (
-    <div className="hidden w-[320px] shrink-0 flex-col border-r md:flex">
+    <div className={`w-[320px] shrink-0 flex-col border-r ${forceVisible ? 'flex' : 'hidden md:flex'}`}>
       <div className="p-3">
         <div className="relative">
           <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -165,6 +178,7 @@ export function DesktopSidebar({
             className="pl-8 pr-8"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
+            suppressHydrationWarning
           />
           {searchQuery && (
             <button
@@ -253,6 +267,7 @@ export function DesktopSidebar({
           ) : null}
         </div>
       </ScrollArea>
+      <SidebarFooter currentUser={currentUser} />
     </div>
   );
 }
@@ -261,12 +276,24 @@ export function MobileSidebar({
   convos,
   activeId,
   setActive,
+  currentUser,
 }: {
   convos: Conversation[];
   activeId?: string;
   setActive: (id: string) => void;
+  currentUser?: { username: string; displayName?: string };
 }) {
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Debug conversations updates for mobile
+  console.log(
+    '📱 MobileSidebar rendering with convos:',
+    convos.map(c => ({
+      id: c.id,
+      name: c.name,
+      last: c.last,
+    }))
+  );
 
   // Filter and group conversations based on search query and unread status
   const { filteredConvos, groupedConvos } = useMemo(() => {
@@ -331,6 +358,7 @@ export function MobileSidebar({
               className="pl-8 pr-8"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
+              suppressHydrationWarning
             />
             {searchQuery && (
               <button
@@ -418,6 +446,7 @@ export function MobileSidebar({
             ) : null}
           </div>
         </ScrollArea>
+        <SidebarFooter currentUser={currentUser} />
       </SheetContent>
     </Sheet>
   );

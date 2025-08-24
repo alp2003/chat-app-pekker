@@ -4,10 +4,26 @@ import { io, Socket } from 'socket.io-client';
 // Import refresh function from api module
 async function refreshToken(): Promise<boolean> {
   try {
-    const response = await fetch('/api/auth/refresh', {
+    // Use absolute URL to ensure it works from any origin
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+    const url = `${baseUrl}/api/auth/refresh`;
+    
+    console.log('🔄 Refreshing token at:', url);
+    
+    const response = await fetch(url, {
       method: 'POST',
       credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
     });
+    
+    console.log('🔄 Refresh response:', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+    });
+    
     return response.ok;
   } catch (error) {
     console.error('❌ Token refresh failed:', error);

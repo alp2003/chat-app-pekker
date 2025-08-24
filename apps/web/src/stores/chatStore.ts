@@ -234,8 +234,14 @@ const useChatStore = create<ChatStore>()(
         const state = get();
         if (!state.activeRoomId || !state.user || !socket) return;
 
-        // Generate proper UUID for clientMsgId
-        const clientMsgId = crypto.randomUUID();
+        // Generate proper UUID for clientMsgId (with fallback for older browsers)
+        const clientMsgId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? 
+          crypto.randomUUID() : 
+          'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+          });
         const optimisticMessage: Message = {
           id: clientMsgId,
           content,
@@ -924,25 +930,27 @@ const useChatStore = create<ChatStore>()(
                 'messages'
               );
 
-              // Find the latest message that was NOT sent by the current user
-              const latestReceivedMessage = messages
+              // Find the latest message from anyone (including current user)
+              const latestMessage = messages
                 .slice()
                 .reverse() // Start from the latest messages
-                .find(msg => {
-                  console.log(
-                    '🔍 Checking message:',
-                    msg.content,
-                    'from userId:',
-                    msg.userId,
-                    'vs current user:',
-                    state.user!.id,
-                    'match:',
-                    msg.userId === state.user!.id
-                  );
-                  return msg.userId !== state.user!.id;
-                });
+                .find(msg => msg.content && msg.content.trim() !== ''); // Find first non-empty message
 
-              const newLast = latestReceivedMessage?.content || null;
+              console.log(
+                '🔍 Latest message found:',
+                latestMessage?.content,
+                'from userId:',
+                latestMessage?.userId,
+                'current user:',
+                state.user!.id,
+                'is from me:',
+                latestMessage?.userId === state.user!.id
+              );
+
+              const newLast = latestMessage?.content || null;
+              
+              // Just show the message content without sender information
+              let formattedLast = newLast;
 
               console.log(
                 '🔄 Conversation:',
@@ -950,14 +958,14 @@ const useChatStore = create<ChatStore>()(
                 'old last:',
                 convo.last,
                 'new last:',
-                newLast,
-                'latest received from userId:',
-                latestReceivedMessage?.userId
+                formattedLast,
+                'latest message from userId:',
+                latestMessage?.userId
               );
 
               return {
                 ...convo,
-                last: newLast,
+                last: formattedLast,
               };
             });
 

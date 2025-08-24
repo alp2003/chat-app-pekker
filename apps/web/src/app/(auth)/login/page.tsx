@@ -23,7 +23,11 @@ export default function LoginPage() {
         <CardContent className="space-y-3">
           <div className="space-y-1">
             <Label>Username</Label>
-            <Input value={username} onChange={e => setU(e.target.value)} />
+            <Input 
+              value={username} 
+              onChange={e => setU(e.target.value)} 
+              suppressHydrationWarning 
+            />
           </div>
           <div className="space-y-1">
             <Label>Password</Label>
@@ -31,6 +35,7 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={e => setP(e.target.value)}
+              suppressHydrationWarning
             />
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}

@@ -5,8 +5,11 @@
   "main": "index.js",
   "scripts": {
     "dev": "turbo run dev --parallel",
+    "dev:network": "./dev-network.sh",
     "build": "turbo run build",
     "start": "docker compose up --build",
+    "start:app-only": "docker compose -f docker-compose.yml up --build api web",
+    "update-ip": "./update-ip.sh",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "lint:fix": "turbo run lint:fix",

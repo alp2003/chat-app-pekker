@@ -8,14 +8,20 @@ export async function POST(req: NextRequest) {
   console.log('🔄 Refresh API route called');
 
   const cookieHeader = req.headers.get('cookie') || '';
+  console.log('🍪 Incoming cookie header:', cookieHeader ? 'EXISTS' : 'EMPTY');
+  console.log('🍪 Cookie length:', cookieHeader.length);
+  if (cookieHeader) {
+    console.log('🍪 Cookie preview:', cookieHeader.substring(0, 200) + (cookieHeader.length > 200 ? '...' : ''));
+  }
 
   // Forward the refresh request to the backend
   const response = await fetch(`${API}/auth/refresh`, {
     method: 'POST',
-    credentials: 'include' as RequestCredentials,
     headers: {
       cookie: cookieHeader,
+      'user-agent': req.headers.get('user-agent') || '',
     },
+    // Don't use credentials: 'include' with manual cookie forwarding
   });
 
   const backendTime = Math.round(performance.now() - start);

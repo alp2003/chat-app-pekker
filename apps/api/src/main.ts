@@ -27,7 +27,13 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
   app.use(cookieParser());
-  app.enableCors({ origin: [/^http:\/\/localhost:\d+$/], credentials: true });
+  app.enableCors({ 
+    origin: [
+      /^http:\/\/localhost:\d+$/,
+      /^http:\/\/192\.168\.50\.\d+:\d+$/
+    ], 
+    credentials: true 
+  });
   app.useGlobalPipes(new ValidationPipe({ transform: true, whitelist: true }));
 
   const redisUrl = configService.get<string>('app.redisUrl');
@@ -53,7 +59,13 @@ async function bootstrap() {
         (IoAdapter.prototype as any).createIOServer as Function
       ).call(this, port, {
         ...options,
-        cors: { origin: [/^http:\/\/localhost:\d+$/], credentials: true },
+        cors: { 
+          origin: [
+            /^http:\/\/localhost:\d+$/,
+            /^http:\/\/192\.168\.50\.\d+:\d+$/
+          ], 
+          credentials: true 
+        },
       });
       (server.adapter as Function)(createAdapter(pubClient, subClient));
       return server;
@@ -62,7 +74,7 @@ async function bootstrap() {
   }
 
   const port = configService.get<number>('app.port');
-  await app.listen(Number(port));
+  await app.listen(Number(port), '0.0.0.0'); // Bind to all interfaces
 
   logger.info(
     {

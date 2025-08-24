@@ -23,6 +23,10 @@ export type Message = {
   error?: boolean;
   edited?: boolean;
   reactions?: Reaction[];
+  
+  // Add sender information for display purposes
+  senderUsername?: string;
+  senderDisplayName?: string | null;
 };
 
 export type Conversation = {

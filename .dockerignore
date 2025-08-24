@@ -1,0 +1,17 @@
+node_modules
+.next
+.turbo
+dist
+.git
+.gitignore
+README.md
+Dockerfile
+.dockerignore
+*.log
+.env.local
+.env*.local
+coverage
+.nyc_output
+test-results
+playwright-report
+.DS_Store

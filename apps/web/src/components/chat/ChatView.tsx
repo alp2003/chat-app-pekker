@@ -21,6 +21,7 @@ export default function ChatView({
   rightHeaderSlot,
   sidebarTopSlot,
   forceScrollToBottom,
+  currentUser, // Add current user for sidebar footer
 }: {
   me: string;
   conversations: Conversation[];
@@ -35,6 +36,7 @@ export default function ChatView({
   rightHeaderSlot?: React.ReactNode;
   sidebarTopSlot?: React.ReactNode;
   forceScrollToBottom?: number;
+  currentUser?: { username: string; displayName?: string };
 }) {
   const [text, setText] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -54,26 +56,30 @@ export default function ChatView({
           activeId={activeId}
           setActive={handleSelectConversation}
           topSlot={sidebarTopSlot}
+          currentUser={currentUser}
         />
       </aside>
 
       {/* Main column */}
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Header */}
-        <div className="flex items-center gap-2 border-b px-2 py-2 md:px-3">
-          {/* Mobile hamburger */}
+        {/* Header - make it sticky on mobile */}
+        <div className="sticky top-0 z-30 flex items-center gap-2 border-b px-2 py-2 md:px-3 bg-background">
+          {/* Mobile hamburger - always visible on mobile */}
           <button
             type="button"
             aria-label="Open sidebar"
-            className="md:hidden inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-muted"
-            onClick={() => setDrawerOpen(true)}
+            className="sm:hidden inline-flex h-10 w-10 items-center justify-center rounded-md bg-primary/20 border-2 border-primary/30 text-primary"
+            onClick={() => {
+              console.log('🍔 Hamburger clicked, opening drawer');
+              setDrawerOpen(true);
+            }}
           >
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+            <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor">
               <path
-                d="M4 6h16M4 12h16M4 18h16"
-                stroke="currentColor"
+                d="M3 12h18M3 6h18M3 18h18"
                 strokeWidth="2"
                 strokeLinecap="round"
+                strokeLinejoin="round"
               />
             </svg>
           </button>
@@ -135,6 +141,8 @@ export default function ChatView({
               activeId={activeId}
               setActive={handleSelectConversation}
               topSlot={sidebarTopSlot}
+              currentUser={currentUser}
+              forceVisible={true}
             />
           </div>
         </>

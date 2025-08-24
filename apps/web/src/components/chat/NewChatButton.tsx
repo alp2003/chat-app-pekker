@@ -173,6 +173,7 @@ export default function NewChatButton({
                     setDmUsername(e.target.value);
                     handleSearchUsers(e.target.value);
                   }}
+                  suppressHydrationWarning
                 />
               </div>
 
@@ -216,6 +217,7 @@ export default function NewChatButton({
                   placeholder="Enter group name..."
                   value={groupName}
                   onChange={e => setGroupName(e.target.value)}
+                  suppressHydrationWarning
                 />
               </div>
 
@@ -225,6 +227,7 @@ export default function NewChatButton({
                   id="memberSearch"
                   placeholder="Search users to add..."
                   onChange={e => handleSearchUsers(e.target.value)}
+                  suppressHydrationWarning
                 />
               </div>
 

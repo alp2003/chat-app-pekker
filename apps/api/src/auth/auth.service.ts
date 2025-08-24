@@ -186,20 +186,49 @@ export class AuthService {
   }
 
   async logout(userId: string, refresh: string) {
-    const sessions = await this.prisma.session.findMany({
-      where: { userId, revokedAt: null },
-    });
-    for (const s of sessions) {
-      const ok = await argon2.verify(s.refreshTokenHash, refresh);
-      if (ok) {
-        await this.prisma.session.update({
-          where: { id: s.id },
-          data: { revokedAt: new Date() },
-        });
-        return { ok: true };
+    try {
+      // Find all active sessions for this user
+      const sessions = await this.prisma.session.findMany({
+        where: { userId, revokedAt: null },
+        orderBy: { createdAt: 'desc' }, // Most recent first
+      });
+
+      let sessionRevoked = false;
+
+      // Find and revoke the matching session
+      for (const session of sessions) {
+        try {
+          const isMatch = await argon2.verify(session.refreshTokenHash, refresh);
+          if (isMatch) {
+            await this.prisma.session.update({
+              where: { id: session.id },
+              data: { 
+                revokedAt: new Date(),
+                // Optional: Add revoke reason for audit trail
+                // revokeReason: 'user_logout'
+              },
+            });
+            sessionRevoked = true;
+            console.log(`🚪 Session revoked for user ${userId}`);
+            break;
+          }
+        } catch (argonError) {
+          console.warn('Argon2 verification failed for session:', session.id);
+          continue;
+        }
       }
+
+      if (!sessionRevoked) {
+        console.warn(`⚠️ No matching session found for logout: ${userId}`);
+        // Still return success - the user is trying to logout, don't block them
+      }
+
+      return { ok: true, sessionRevoked };
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Even on error, we should allow logout to proceed
+      return { ok: true, sessionRevoked: false };
     }
-    return { ok: true };
   }
 
   async verifyAccess(token: string) {

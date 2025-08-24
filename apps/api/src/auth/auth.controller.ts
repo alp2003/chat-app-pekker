@@ -57,18 +57,20 @@ export class AuthController {
     );
 
     // httpOnly cookies for both tokens
+    const isProduction = this.cfg.get('NODE_ENV') === 'production';
+    
     res.cookie('refresh', refresh, {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: this.cfg.get('NODE_ENV') === 'production',
+      sameSite: 'lax', // Use lax for broader compatibility
+      secure: false, // Keep false for HTTP development
       maxAge: 1000 * 60 * 60 * 24 * 30, // 30d
       path: '/',
     });
 
     res.cookie('access', access, {
       httpOnly: true,
-      sameSite: 'lax',
-      secure: this.cfg.get('NODE_ENV') === 'production',
+      sameSite: 'lax', // Use lax for broader compatibility  
+      secure: false, // Keep false for HTTP development
       maxAge: 1000 * 300, // 5 minutes for testing to eliminate race conditions
       path: '/',
     });
@@ -111,19 +113,21 @@ export class AuthController {
       );
 
       console.log('🔄 New tokens generated, setting cookies...');
-
+      
+      const isProduction = this.cfg.get('NODE_ENV') === 'production';
+      
       res.cookie('refresh', refresh, {
         httpOnly: true,
-        sameSite: 'lax',
-        secure: this.cfg.get('NODE_ENV') === 'production',
+        sameSite: 'lax', // Use lax for broader compatibility
+        secure: false, // Keep false for HTTP development
         maxAge: 1000 * 60 * 60 * 24 * 30,
         path: '/',
       });
 
       res.cookie('access', access, {
         httpOnly: true,
-        sameSite: 'lax',
-        secure: this.cfg.get('NODE_ENV') === 'production',
+        sameSite: 'lax', // Use lax for broader compatibility
+        secure: false, // Keep false for HTTP development
         maxAge: 1000 * 300, // 5 minutes for testing to eliminate race conditions
         path: '/',
       });
@@ -142,17 +146,46 @@ export class AuthController {
   @Post('logout')
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const token = (req.cookies?.refresh as string) || '';
-    try {
-      const payload = JSON.parse(
-        Buffer.from(token.split('.')[1] || '', 'base64').toString() || '{}',
-      ) as { sub?: string };
-      const { sub: userId } = payload;
-      if (userId) await this.auth.logout(userId, token);
-    } catch {
-      // Ignore errors when parsing invalid refresh token
+    let logoutResult = { ok: true, sessionRevoked: false };
+
+    // Only attempt to revoke session if we have a valid refresh token
+    if (token) {
+      try {
+        // Decode JWT to get user ID (don't verify signature, just extract payload)
+        const payload = JSON.parse(
+          Buffer.from(token.split('.')[1] || '', 'base64').toString() || '{}',
+        ) as { sub?: string };
+        
+        const { sub: userId } = payload;
+        if (userId) {
+          logoutResult = await this.auth.logout(userId, token);
+        }
+      } catch (error) {
+        // Log error but don't fail logout - token might be malformed
+        console.warn('Failed to parse refresh token during logout:', error);
+      }
     }
-    res.clearCookie('refresh', { path: '/' });
-    res.clearCookie('access', { path: '/' });
-    return { ok: true };
+
+    // Always clear cookies regardless of server-side logout success
+    // This ensures the client is logged out even if server cleanup fails
+    const cookieOptions = { 
+      path: '/', 
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production', // HTTPS in production
+      sameSite: 'lax' as const
+    };
+
+    res.clearCookie('refresh', cookieOptions);
+    res.clearCookie('access', cookieOptions);
+    
+    // Also clear non-httpOnly cookies that might exist
+    res.clearCookie('u_token', { path: '/' });
+    res.clearCookie('u_name', { path: '/' });
+
+    return { 
+      ok: true, 
+      sessionRevoked: logoutResult.sessionRevoked,
+      message: 'Logged out successfully'
+    };
   }
 }

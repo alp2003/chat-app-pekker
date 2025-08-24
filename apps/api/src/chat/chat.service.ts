@@ -278,6 +278,8 @@ export class ChatService {
           clientMsgId: msg.clientMsgId,
           replyToId: msg.replyToId,
           reactions,
+          // Include sender information for conversation previews
+          senderUsername: msg.sender?.username,
         };
       }),
     );
@@ -319,9 +321,17 @@ export class ChatService {
         },
         update: {},
         create: data,
+        include: {
+          sender: { select: { id: true, username: true } }, // Include sender info
+        },
       });
     } else {
-      saved = await this.prisma.message.create({ data });
+      saved = await this.prisma.message.create({ 
+        data,
+        include: {
+          sender: { select: { id: true, username: true } }, // Include sender info
+        },
+      });
     }
 
     // Transform to match frontend expectations
@@ -333,6 +343,7 @@ export class ChatService {
       createdAt: saved.createdAt.toISOString(),
       clientMsgId: saved.clientMsgId,
       replyToId: saved.replyToId,
+      senderUsername: saved.sender?.username, // Include sender username
     };
 
     // Invalidate caches since we have new message

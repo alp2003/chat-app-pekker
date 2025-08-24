@@ -15,28 +15,18 @@ export default async function ProtectedPage() {
     const accessToken = cookieStore.get('access')?.value;
 
     if (accessToken) {
-      const serverStart = performance.now();
-      Logger.api.log('🚀', 'Starting protected server-side bootstrap...');
-
-      // Fetch user and conversations in parallel for better performance
-      const [user, conversations] = await Promise.all([
-        getMe(),
-        listConversations(),
-      ]);
-
-      initialData = { user, conversations };
-
-      const serverTime = Math.round(performance.now() - serverStart);
-      Logger.api.log(
-        '🎉',
-        `Protected server bootstrap complete in ${serverTime}ms`
-      );
+      Logger.api.log('✅', 'Access token found - client will handle data fetching');
     } else {
       Logger.api.log('⚠️', 'No access token found - client will bootstrap');
     }
+    
+    // Always use client-side bootstrap to avoid server-side authentication issues
+    // The client-side has proper cookie handling and refresh token logic
+    initialData = null;
   } catch (error) {
-    Logger.api.error('❌', 'Protected server bootstrap error:', error);
+    Logger.api.error('❌', 'Protected page error:', error);
     // Fall back to client-side bootstrap
+    initialData = null;
   }
 
   return <ProtectedPageClient initialData={initialData} />;

@@ -24,11 +24,19 @@ export default function RegisterPage() {
         <CardContent className="space-y-3">
           <div className="space-y-1">
             <Label>Username</Label>
-            <Input value={username} onChange={e => setU(e.target.value)} />
+            <Input 
+              value={username} 
+              onChange={e => setU(e.target.value)} 
+              suppressHydrationWarning 
+            />
           </div>
           <div className="space-y-1">
             <Label>Display name</Label>
-            <Input value={displayName} onChange={e => setD(e.target.value)} />
+            <Input 
+              value={displayName} 
+              onChange={e => setD(e.target.value)} 
+              suppressHydrationWarning 
+            />
           </div>
           <div className="space-y-1">
             <Label>Password</Label>
@@ -36,6 +44,7 @@ export default function RegisterPage() {
               type="password"
               value={password}
               onChange={e => setP(e.target.value)}
+              suppressHydrationWarning
             />
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}

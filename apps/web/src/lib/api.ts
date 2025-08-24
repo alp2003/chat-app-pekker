@@ -2,6 +2,22 @@ import { Conversation, Message } from './types/chat';
 
 const BASE = '/api'; // goes through Next BFF: /app/api/[...path]/route.ts
 
+// Helper to get the appropriate base URL for server vs client context
+function getBaseUrl(): string {
+  // In server context, use the IP address from environment variable or fallback to localhost
+  if (typeof window === 'undefined') {
+    // Extract IP from NEXTAUTH_URL environment variable
+    const nextAuthUrl = process.env.NEXTAUTH_URL;
+    if (nextAuthUrl) {
+      return nextAuthUrl;
+    }
+    // Fallback to localhost if no environment variable
+    return 'http://localhost:3000';
+  }
+  // In client context, use the current origin
+  return window.location.origin;
+}
+
 type Json = Record<string, any> | any[];
 
 let isRefreshing = false;
@@ -33,7 +49,8 @@ async function refreshToken(): Promise<boolean> {
     console.log('🔄 Starting token refresh...');
     notifyRefreshState(true);
 
-    const response = await fetch('/api/auth/refresh', {
+    const baseUrl = getBaseUrl();
+    const response = await fetch(`${baseUrl}/api/auth/refresh`, {
       method: 'POST',
       credentials: 'include',
     });
@@ -94,8 +111,11 @@ async function apiFetch<T = any>(
   path: string,
   options: RequestInit = {}
 ): Promise<Response> {
+  const baseUrl = getBaseUrl();
+  const fullUrl = `${baseUrl}/api${path}`;
+  
   const makeRequest = () =>
-    fetch(`/api${path}`, {
+    fetch(fullUrl, {
       credentials: 'include', // Important for httpOnly cookies
       ...options,
     });
@@ -131,7 +151,7 @@ async function apiFetch<T = any>(
         const retryStart = performance.now();
         console.log('🔄 Retrying original request:', path);
         // Make a completely fresh request with new credentials
-        res = await fetch(`/api${path}`, {
+        res = await fetch(fullUrl, {
           credentials: 'include',
           ...options,
         });
