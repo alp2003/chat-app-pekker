@@ -26,6 +26,7 @@ export class ChatController {
     private readonly chatGateway: ChatGateway,
   ) {
     console.log('ChatService injected?', !!chatService);
+    console.log('ChatGateway injected?', !!chatGateway);
   }
 
   @Post()
@@ -79,51 +80,25 @@ export class ChatController {
   @Post('dm/start')
   @RateLimitByUser(60, 10) // 10 DM starts per user per minute
   async startDm(@UserId() me: string, @Body() dto: StartDmDto) {
-    console.log('🚀 Starting DM creation for user:', me, 'with:', dto.username);
+    console.log('� Starting DM with:', dto.username);
     const result = await this.chatService.getOrCreateDmByUsername(
       me,
       dto.username,
     );
-    console.log('📝 DM creation result:', {
-      id: result.id,
-      otherUserId: result.otherUserId,
-      isNew: result.isNew,
-      hasGateway: !!this.chatGateway,
-      hasServer: !!this.chatGateway?.server,
-    });
 
     // If a new conversation was created, invalidate conversations cache for both users
     if (result.isNew) {
-      console.log('🔄 Invalidating conversations cache for new DM...');
+      console.log('🔄 New DM created, invalidating cache for both users');
 
       try {
         await this.chatService.invalidateConversationsCacheImmediate(me);
-        console.log('✅ Cache immediately invalidated for current user:', me);
-      } catch (error) {
-        console.error(
-          '❌ Failed to immediately invalidate cache for current user:',
-          me,
-          error,
-        );
-      }
-
-      try {
         await this.chatService.invalidateConversationsCacheImmediate(
           result.otherUserId,
         );
-        console.log(
-          '✅ Cache immediately invalidated for other user:',
-          result.otherUserId,
-        );
+        console.log('✅ Cache invalidation completed');
       } catch (error) {
-        console.error(
-          '❌ Failed to immediately invalidate cache for other user:',
-          result.otherUserId,
-          error,
-        );
+        console.error('❌ Cache invalidation failed:', error);
       }
-
-      console.log('✅ Immediate cache invalidation completed');
     }
 
     // Emit socket event to both users about the new conversation (only for new conversations)
@@ -136,34 +111,11 @@ export class ChatController {
         timestamp: new Date().toISOString(),
       };
 
-      console.log(
-        '🟢 Emitting conversation:created socket event for new DM:',
-        result.id,
-      );
-      console.log('🟢 Event data to emit:', JSON.stringify(eventData, null, 2));
-
-      // Safe access to socket server properties
-      const clientsCount =
-        this.chatGateway.server?.engine?.clientsCount || 'unknown';
       const socketsCount = this.chatGateway.server?.sockets?.sockets?.size || 0;
-      console.log('🔍 Connected clients count:', clientsCount);
-      console.log('🔍 Namespace sockets:', socketsCount);
-
-      // List all connected socket IDs for debugging
-      if (this.chatGateway.server?.sockets?.sockets) {
-        const socketIds = Array.from(
-          this.chatGateway.server.sockets.sockets.keys(),
-        );
-        console.log('🔍 Connected socket IDs:', socketIds);
-      } else {
-        console.log('🔍 No socket connection info available');
-      }
-
-      // Emit to ALL connected clients in the /chat namespace for testing
-      console.log(
-        '📡 Broadcasting conversation:created event to ALL clients...',
-      );
+      console.log('� Broadcasting DM creation event to', socketsCount, 'clients');
+      
       this.chatGateway.server.emit('conversation:created', eventData);
+      console.log('✅ DM created:', result.id);
     }
 
     return result;
@@ -172,9 +124,71 @@ export class ChatController {
   @Post('groups')
   @RateLimitByUser(300, 5) // 5 group creates per user per 5 minutes
   async createGroup(@UserId() me: string, @Body() dto: CreateGroupDto) {
+    console.log('🚀 Creating group:', dto.name, 'with', dto.memberIds.length + 1, 'members');
+    
     // ensure creator is in the group
     const unique = Array.from(new Set([me, ...dto.memberIds]));
     const room = await this.chatService.createGroup(me, dto.name, unique);
+
+    // Add a small delay to ensure cache invalidation completes
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Emit WebSocket event for real-time group creation
+    if (this.chatGateway?.server) {
+      const eventData = {
+        conversationId: room.id,
+        participants: unique,
+        type: 'group',
+        name: dto.name,
+        initiatedBy: me,
+        timestamp: new Date().toISOString(),
+      };
+
+      const socketsCount = this.chatGateway.server?.sockets?.sockets?.size || 0;
+      console.log('� Broadcasting group creation event to', socketsCount, 'clients');
+      
+      if (socketsCount === 0) {
+        console.log('⚠️ No WebSocket clients connected');
+      }
+
+      this.chatGateway.server.emit('conversation:created', eventData);
+      console.log('✅ Group created:', room.id);
+    } else {
+      console.log('❌ WebSocket not available for group:', room.id);
+    }
+
     return { id: room.id };
+  }
+
+  // Test endpoint to verify WebSocket is working
+  @Post('test-websocket')
+  async testWebSocket(@UserId() me: string) {
+    console.log('🧪 Testing WebSocket connection for user:', me);
+    
+    if (this.chatGateway?.server) {
+      const testData = {
+        message: 'Test WebSocket event',
+        userId: me,
+        timestamp: new Date().toISOString(),
+      };
+
+      console.log('📡 Emitting test WebSocket event:', testData);
+      this.chatGateway.server.emit('test:event', testData);
+      
+      const socketsCount = this.chatGateway.server?.sockets?.sockets?.size || 0;
+      console.log('🔍 Connected sockets count:', socketsCount);
+      
+      return { 
+        success: true, 
+        message: 'Test event emitted',
+        connectedSockets: socketsCount
+      };
+    } else {
+      console.log('❌ ChatGateway server not available');
+      return { 
+        success: false, 
+        message: 'WebSocket server not available' 
+      };
+    }
   }
 }

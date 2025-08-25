@@ -88,6 +88,7 @@ export default function ChatMessageList({
   onStartReached,
   onReact,
   forceScrollToBottom, // Add this prop to force scrolling
+  isGroup, // Add this prop to indicate if it's a group chat
 }: {
   messages: Message[];
   me: string;
@@ -98,6 +99,7 @@ export default function ChatMessageList({
   onStartReached?: () => void;
   onReact?: (message: Message, emoji: string) => void;
   forceScrollToBottom?: number; // timestamp to force scroll
+  isGroup?: boolean; // Add this prop type
 }) {
   const vRef = useRef<VirtuosoHandle | null>(null);
   const [atBottom, setAtBottom] = useState(true);
@@ -325,6 +327,7 @@ export default function ChatMessageList({
               me={me}
               name={peer?.name}
               avatar={peer?.avatar}
+              isGroup={isGroup}
               onReact={onReact}
             />
           );

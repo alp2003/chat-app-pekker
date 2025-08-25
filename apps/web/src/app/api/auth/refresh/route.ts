@@ -108,6 +108,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Preserve the u_name cookie during refresh if it exists
+    const incomingUNameCookie = req.cookies.get('u_name')?.value;
+    if (incomingUNameCookie) {
+      console.log('🍪 Preserving u_name cookie during refresh:', incomingUNameCookie);
+      nextResponse.cookies.set('u_name', incomingUNameCookie, {
+        httpOnly: false,
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        path: '/',
+        maxAge: 86400, // 24 hours - same as login
+      });
+    } else {
+      console.log('⚠️ No u_name cookie found during refresh');
+    }
+
     const totalTime = Math.round(performance.now() - start);
     console.log('✅ Refresh complete', `(${totalTime}ms total)`);
   }

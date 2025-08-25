@@ -23,6 +23,7 @@ type BubbleProps = {
   me?: string; // Add current user ID for reaction checking
   avatar?: string | null;
   name?: string;
+  isGroup?: boolean; // Add flag to indicate if this is a group chat
   // optional callbacks
   onReply?: (m: Message) => void;
   onReact?: (m: Message, emoji: string) => void;
@@ -36,6 +37,7 @@ export default function ChatBubble({
   me,
   avatar,
   name,
+  isGroup,
   onReply,
   onReact,
   onDelete,
@@ -121,6 +123,13 @@ export default function ChatBubble({
       )}
 
       <div className="group relative max-w-[75%] overflow-visible">
+        {/* Username for group chats (non-mine messages only) */}
+        {isGroup && !mine && name && (
+          <div className="mb-1 ml-1 text-xs font-semibold text-blue-600 dark:text-blue-400">
+            {name}
+          </div>
+        )}
+        
         {/* Reply preview (if quoting) */}
         {m.replyToId && m.replyTo && (
           <div

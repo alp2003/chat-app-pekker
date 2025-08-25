@@ -19,6 +19,10 @@ export function middleware(req: NextRequest) {
     '🍪 Current cookies before expiration:',
     allCookies.join(', ') || 'none'
   );
+  
+  // Specifically check for u_name cookie
+  const uNameCookie = req.cookies.get('u_name')?.value;
+  console.log('👤 u_name cookie in middleware:', uNameCookie || 'NOT FOUND');
 
   // Debug logging
   console.log('🔒 Middleware check:', {

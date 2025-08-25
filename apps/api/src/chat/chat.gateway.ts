@@ -41,6 +41,8 @@ export class ChatGateway
 
   afterInit(server: Server) {
     console.log('🔌 ChatGateway server initialized:', !!server);
+    console.log('🔌 Server engine:', !!server.engine);
+    console.log('🔌 Server ready for events');
   }
 
   async handleConnection(client: Socket) {

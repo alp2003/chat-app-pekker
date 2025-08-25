@@ -22,7 +22,7 @@ pnpm-debug.log*
 **/.env
 **/.env.*        # .env.local, .env.production, etc.
 !.env.example    # keep examples if you have them
-
+.env.docker
 # ================================
 # Build Outputs
 # ================================

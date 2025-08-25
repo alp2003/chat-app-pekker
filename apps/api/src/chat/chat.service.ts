@@ -406,7 +406,7 @@ export class ChatService {
   // apps/api/src/chat/chat.service.ts (ensure this exists)
   async createGroup(ownerId: string, name: string, memberIds: string[]) {
     // Create group and memberships in a transaction with timeout
-    return PrismaOptimizer.executeTransaction(
+    const room = await PrismaOptimizer.executeTransaction(
       this.prisma,
       async (tx) => {
         const room = await tx.room.create({
@@ -429,6 +429,16 @@ export class ChatService {
       },
       15000, // Longer timeout for group creation
     );
+
+    // Invalidate conversations cache for all group members immediately
+    const allMemberIds = Array.from(new Set([ownerId, ...memberIds]));
+    await Promise.all(
+      allMemberIds.map((userId) =>
+        this.invalidateConversationsCacheImmediate(userId)
+      )
+    );
+
+    return room;
   }
 
   async getRecentMessages(

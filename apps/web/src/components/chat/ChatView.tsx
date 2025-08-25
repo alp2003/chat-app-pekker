@@ -102,6 +102,11 @@ export default function ChatView({
               onReact={onReact}
               conversationKey={activeId}
               forceScrollToBottom={forceScrollToBottom}
+              isGroup={(() => {
+                const convo = conversations.find(c => c.id === activeId);
+                // Use the isGroup field from the backend instead of counting members
+                return convo?.isGroup ?? false;
+              })()}
               getPeer={uid => {
                 const convo = conversations.find(c => c.id === activeId);
                 const member = convo?.members?.find(p => p.id === uid);

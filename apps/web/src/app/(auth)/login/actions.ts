@@ -97,7 +97,29 @@ export async function loginAction(data: {
   }
 
   // Store lightweight user context (non-sensitive)
-  c.set('u_name', json.user?.username ?? '', { path: '/', sameSite: 'lax' });
+  const username = json.user?.username || json.username || '';
+  console.log('👤 Setting u_name cookie:', { 
+    fullJson: json, 
+    userObject: json.user, 
+    username: username,
+    willSetCookie: username !== ''
+  });
+  
+  if (username) {
+    c.set('u_name', username, { 
+      path: '/', 
+      sameSite: 'lax' as const,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 86400 // 24 hours - same as other auth cookies
+    });
+    console.log('✅ u_name cookie set with value:', username);
+    
+    // Verify the cookie was set
+    const cookieCheck = (await cookies()).get('u_name');
+    console.log('🔍 Cookie verification after setting:', cookieCheck?.value || 'NOT FOUND');
+  } else {
+    console.warn('⚠️ No username found in response - u_name cookie not set');
+  }
 
   console.log('🍪 All cookies set in server action');
 

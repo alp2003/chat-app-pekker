@@ -141,6 +141,10 @@ const useChatStore = create<ChatStore>()(
             console.error('🎭 Reaction failed:', data);
           });
           socket.on('conversation:created', (data: any) => {
+            console.log('🟢 === WebSocket Event Received ===');
+            console.log('🟢 Event type: conversation:created');
+            console.log('🟢 Socket connected:', socket.connected);
+            console.log('🟢 Socket id:', socket.id);
             console.log('🟢 New conversation created event received:', data);
             console.log(
               '🔍 Event data details:',
@@ -151,10 +155,17 @@ const useChatStore = create<ChatStore>()(
 
           // Add connection debugging
           socket.on('connect', () => {
-            console.log('🟢 Socket connected');
+            console.log('🟢 Socket connected to:', socket.io.uri);
+            console.log('🟢 Socket namespace:', socket.nsp);
+            console.log('🟢 Socket id:', socket.id);
           });
           socket.on('disconnect', () => {
             console.log('🔴 Socket disconnected');
+          });
+          
+          // Add generic event listener for debugging
+          socket.onAny((eventName: string, ...args: any[]) => {
+            console.log('📡 WebSocket event received:', eventName, args);
           });
         }
 
@@ -604,9 +615,13 @@ const useChatStore = create<ChatStore>()(
         name?: string;
         initiatedBy: string;
       }) => {
-        console.log('🟢 Handling new conversation created:', data);
+        console.log('🟢 === CONVERSATION CREATED EVENT ===');
+        console.log('🟢 Event data:', JSON.stringify(data, null, 2));
         console.log('🔍 Current user ID:', get().user?.id);
         console.log('🔍 Participants:', data.participants);
+        console.log('🔍 Conversation type:', data.type);
+        console.log('🔍 Conversation name:', data.name);
+        console.log('🔍 Initiated by:', data.initiatedBy);
         console.log(
           '🔍 User involved?:',
           data.participants.includes(get().user?.id || '')
@@ -623,12 +638,16 @@ const useChatStore = create<ChatStore>()(
         }
 
         console.log('✅ Current user is involved, refreshing conversations...');
+        console.log('📊 Current conversations count:', state.conversations.length);
+        console.log('📊 Current conversation IDs:', state.conversations.map(c => ({ id: c.id, name: c.name })));
+        
         try {
           // Add a small delay to ensure cache invalidation has completed on backend
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await new Promise(resolve => setTimeout(resolve, 100));
 
           // Refresh the conversations list to include the new conversation
           const { listConversations } = await import('@/lib/api');
+          console.log('📡 Fetching updated conversations from API...');
           const updatedConversations = await listConversations();
 
           console.log(
@@ -636,8 +655,8 @@ const useChatStore = create<ChatStore>()(
             updatedConversations.length
           );
           console.log(
-            '🔍 Conversation IDs:',
-            updatedConversations.map(c => c.id)
+            '🔍 All conversation IDs:',
+            updatedConversations.map(c => ({ id: c.id, name: c.name }))
           );
           console.log('🔍 Looking for new conversation:', data.conversationId);
           const newConv = updatedConversations.find(
@@ -646,7 +665,7 @@ const useChatStore = create<ChatStore>()(
           console.log(
             '🔍 New conversation found in list:',
             !!newConv,
-            newConv?.name
+            newConv ? { id: newConv.id, name: newConv.name } : 'NOT FOUND'
           );
 
           set(

@@ -37,6 +37,7 @@ export type Conversation = {
   lastMessageAt?: string | null; // ISO timestamp for sorting
   unread?: number;
   online?: boolean;
+  isGroup?: boolean; // Add this field from backend response
   members?: Member[]; // <-- make optional so optimistic items compile
 };
 
