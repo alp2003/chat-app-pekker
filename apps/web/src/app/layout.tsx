@@ -17,6 +17,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="h-screen" suppressHydrationWarning>
+      <head>
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resize"
+        />
+      </head>
       <body className="h-screen overflow-hidden">
         <ThemeProvider
           attribute="class"

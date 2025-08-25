@@ -48,7 +48,7 @@ export default function ChatView({
   };
 
   return (
-    <div className="flex h-dvh w-full bg-background text-foreground">
+    <div className="flex min-h-[100dvh] w-full bg-background text-foreground">
       {/* Desktop / Tablet sidebar */}
       <aside className="hidden md:block w-80 shrink-0 border-r bg-background">
         <DesktopSidebar

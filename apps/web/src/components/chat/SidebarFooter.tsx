@@ -195,13 +195,13 @@ export function SidebarFooter({ currentUser }: SidebarFooterProps) {
       )}
 
       {/* Footer Button - same height as message input */}
-      <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-[5px]">
+      <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-2 py-2">
         <button
           onClick={() => {
             console.log('🔘 Profile button clicked, isOpen:', isOpen);
             setIsOpen(!isOpen);
           }}
-          className="flex items-center gap-3 w-full px-4 py-3 min-h-[44px] bg-card hover:bg-accent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset border-l-0 border-l-primary/20 rounded-2xl"
+          className="flex items-center gap-3 w-full px-4 py-1 min-h-[42px] bg-card hover:bg-accent transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-inset border-l-0 border-l-primary/20 rounded-2xl"
           aria-expanded={isOpen}
           aria-haspopup="true"
         >
