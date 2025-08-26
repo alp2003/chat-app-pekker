@@ -12,31 +12,6 @@ export class AuthController {
     private cfg: ConfigService,
   ) {}
 
-  @Get('debug-token')
-  async debugToken(
-    @Query('username') username: string,
-    @Query('password') password: string,
-  ) {
-    const {
-      id,
-      username: uname,
-      displayName,
-    } = await this.auth.register({
-      username: username,
-      password: password,
-      displayName: username,
-    });
-    return { id, uname, displayName };
-  }
-
-  @Get('debug-jwt-health')
-  health() {
-    return {
-      hasSecret: !!this.cfg.get<string>('JWT_ACCESS_SECRET', { infer: true }),
-      expiresIn: this.cfg.get<string>('JWT_ACCESS_EXPIRES') ?? '1h',
-    };
-  }
-
   @Post('register')
   async register(@Body(new ZodBody(RegisterDto)) body: RegisterInput) {
     const user = await this.auth.register(body);
@@ -58,19 +33,19 @@ export class AuthController {
 
     // httpOnly cookies for both tokens
     const isProduction = this.cfg.get('NODE_ENV') === 'production';
-    
+
     res.cookie('refresh', refresh, {
       httpOnly: true,
-      sameSite: 'lax', // Use lax for broader compatibility
-      secure: false, // Keep false for HTTP development
+      sameSite: 'lax',
+      secure: isProduction,
       maxAge: 1000 * 60 * 60 * 24 * 30, // 30d
       path: '/',
     });
 
     res.cookie('access', access, {
       httpOnly: true,
-      sameSite: 'lax', // Use lax for broader compatibility  
-      secure: false, // Keep false for HTTP development
+      sameSite: 'lax', // Use lax for broader compatibility
+      secure: isProduction, 
       maxAge: 1000 * 60 * 60, // 1 hour for testing to eliminate race conditions
       path: '/',
     });
@@ -115,13 +90,13 @@ export class AuthController {
       const { access, refresh, user } = result;
 
       console.log('🔄 New tokens generated, setting cookies...');
-      
+
       const isProduction = this.cfg.get('NODE_ENV') === 'production';
-      
+
       res.cookie('refresh', refresh, {
         httpOnly: true,
         sameSite: 'lax', // Use lax for broader compatibility
-        secure: false, // Keep false for HTTP development
+        secure: isProduction, 
         maxAge: 1000 * 60 * 60 * 24 * 30,
         path: '/',
       });
@@ -129,18 +104,18 @@ export class AuthController {
       res.cookie('access', access, {
         httpOnly: true,
         sameSite: 'lax', // Use lax for broader compatibility
-        secure: false, // Keep false for HTTP development
+        secure: isProduction, 
         maxAge: 1000 * 60 * 60, // 1 hour for testing to eliminate race conditions
         path: '/',
       });
 
       console.log('✅ Cookies set successfully');
-      return { 
+      return {
         ok: true,
         user: {
           id: user.id,
           username: user.username,
-        }
+        },
       };
     } catch (error) {
       console.log(
@@ -163,7 +138,7 @@ export class AuthController {
         const payload = JSON.parse(
           Buffer.from(token.split('.')[1] || '', 'base64').toString() || '{}',
         ) as { sub?: string };
-        
+
         const { sub: userId } = payload;
         if (userId) {
           logoutResult = await this.auth.logout(userId, token);
@@ -176,24 +151,24 @@ export class AuthController {
 
     // Always clear cookies regardless of server-side logout success
     // This ensures the client is logged out even if server cleanup fails
-    const cookieOptions = { 
-      path: '/', 
+    const cookieOptions = {
+      path: '/',
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production', // HTTPS in production
-      sameSite: 'lax' as const
+      sameSite: 'lax' as const,
     };
 
     res.clearCookie('refresh', cookieOptions);
     res.clearCookie('access', cookieOptions);
-    
+
     // Also clear non-httpOnly cookies that might exist
     res.clearCookie('u_token', { path: '/' });
     res.clearCookie('u_name', { path: '/' });
 
-    return { 
-      ok: true, 
+    return {
+      ok: true,
       sessionRevoked: logoutResult.sessionRevoked,
-      message: 'Logged out successfully'
+      message: 'Logged out successfully',
     };
   }
 }

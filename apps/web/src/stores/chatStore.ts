@@ -120,24 +120,15 @@ const useChatStore = create<ChatStore>()(
               console.log('🔄 Executing listener refresh after reconnection');
               get()._refreshSocketListeners();
               
-              // After reconnection, do WhatsApp-style bulk sync of all rooms
-              const currentRoomId = get().activeRoomId;
-              if (currentRoomId) {
-                console.log('🔄 WhatsApp-style: Starting bulk sync after reconnection');
-                get()._syncAllRoomsAfterBackground();
-              }
-            }, 50);
-          });
-          
-          // Listen for mobile background return events (critical for reaction sync)
-          socket.on('client:post-background', (data: any) => {
-            console.log('📱 Mobile background return detected - syncing reactions', data);
-            const currentRoomId = get().activeRoomId;
-            if (currentRoomId) {
-              console.log('🔄 Mobile: Starting reaction sync after background');
-              // Force immediate sync without delay for better mobile UX
+              // Always sync after reconnection - don't depend on activeRoomId
+              console.log('🔄 WhatsApp-style: Starting bulk sync after reconnection');
+              console.log('🔄 Reconnection trigger:', data.trigger || 'unknown');
+              console.log('🔄 Active room ID:', get().activeRoomId || 'none');
+              console.log('🔄 Loaded rooms count:', get().loadedRooms.size);
+              
+              // Force sync regardless of active room state
               get()._syncAllRoomsAfterBackground();
-            }
+            }, 50);
           });
         }
 
@@ -175,7 +166,6 @@ const useChatStore = create<ChatStore>()(
           socket.off('msg:react:ack');
           socket.off('msg:react:nack');
           socket.off('client:reconnected');
-          socket.off('client:post-background');
           socket = null;
         }
       },
@@ -375,12 +365,12 @@ const useChatStore = create<ChatStore>()(
         console.log('🔄 WhatsApp-style: Syncing all rooms after background period');
         const state = get();
         
-        // Get all rooms that have been loaded (user has visited them)
-        const loadedRooms = Array.from(state.loadedRooms);
-        console.log('🔄 Syncing loaded rooms:', loadedRooms.length);
+        // Get all conversations that the user has (not just loaded rooms)
+        const allRoomIds = state.conversations.map(conv => conv.id);
+        console.log('🔄 Syncing all user conversations:', allRoomIds.length);
         
-        // Sync all loaded rooms concurrently (like WhatsApp bulk sync)
-        const syncPromises = loadedRooms.map(roomId => 
+        // Sync all conversation rooms concurrently (like WhatsApp bulk sync)
+        const syncPromises = allRoomIds.map(roomId => 
           state._syncRoomAfterReconnection(roomId)
         );
         

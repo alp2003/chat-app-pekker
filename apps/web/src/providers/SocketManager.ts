@@ -480,9 +480,10 @@ export class SocketManager {
     if (!this.socket) return;
 
     // Emit a reconnection event to trigger room sync in chat store
-    console.log('🔄 Triggering post-background sync for reactions');
+    console.log('🔄 Triggering post-background sync for messages/reactions');
     if (this.socket.connected) {
-      this.socket.emit('client:post-background', { 
+      // Use the existing client:reconnected event that the chat store already handles
+      this.socket.emit('client:reconnected', { 
         timestamp: Date.now(),
         trigger: 'mobile-background-return'
       });
@@ -491,9 +492,9 @@ export class SocketManager {
       this.socket.connect();
       this.socket.once('connect', () => {
         console.log('🔄 Reconnected after background, triggering sync');
-        this.socket?.emit('client:post-background', { 
+        this.socket?.emit('client:reconnected', { 
           timestamp: Date.now(),
-          trigger: 'mobile-reconnect'
+          trigger: 'mobile-reconnect-after-background'
         });
       });
     }

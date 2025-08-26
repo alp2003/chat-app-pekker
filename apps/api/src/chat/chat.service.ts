@@ -302,6 +302,14 @@ export class ChatService {
     // Validate sender exists - no automatic user creation
     await this.validateUserExists(input.senderId);
 
+    // Validate sender is a member of the room
+    const isMember = await this.isMember(input.senderId, input.roomId);
+    if (!isMember) {
+      throw new ForbiddenException(
+        `User ${input.senderId} is not a member of room ${input.roomId}`
+      );
+    }
+
     const data = {
       roomId: input.roomId,
       senderId: input.senderId,
