@@ -3,6 +3,15 @@ import { ACCESS_COOKIE } from '@/lib/auth';
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
 
+// Type for refresh response from backend
+type RefreshSuccessResponse = {
+  ok: true;
+  user: {
+    id: string;
+    username: string;
+  };
+};
+
 export async function POST(req: NextRequest) {
   const start = performance.now();
   console.log('🔄 Refresh API route called');
@@ -52,6 +61,16 @@ export async function POST(req: NextRequest) {
   if (response.ok) {
     const setCookieHeaders = response.headers.getSetCookie();
     console.log('🍪 Setting', setCookieHeaders.length, 'cookies...');
+
+    // Try to parse response data for user info
+    let userData: RefreshSuccessResponse | null = null;
+    try {
+      if (responseData) {
+        userData = JSON.parse(responseData);
+      }
+    } catch (e) {
+      console.log('⚠️ Could not parse response data for user info');
+    }
 
     // Parse and set each cookie - optimized version
     setCookieHeaders.forEach(cookieHeader => {
@@ -103,24 +122,35 @@ export async function POST(req: NextRequest) {
           sameSite: 'lax',
           secure: process.env.NODE_ENV === 'production',
           path: '/',
-          maxAge: 300,
+          maxAge: 60 * 60,
         });
       }
     }
 
-    // Preserve the u_name cookie during refresh if it exists
+    // Preserve/update the u_name cookie during refresh
+    const newUsername = userData?.ok ? userData.user?.username : null;
     const incomingUNameCookie = req.cookies.get('u_name')?.value;
-    if (incomingUNameCookie) {
-      console.log('🍪 Preserving u_name cookie during refresh:', incomingUNameCookie);
+    
+    if (newUsername) {
+      console.log('🍪 Setting u_name cookie from refresh response:', newUsername);
+      nextResponse.cookies.set('u_name', newUsername, {
+        httpOnly: false,
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        path: '/',
+        maxAge: 60 * 60, // 1 hour - align with access token expiration
+      });
+    } else if (incomingUNameCookie) {
+      console.log('🍪 Preserving existing u_name cookie during refresh:', incomingUNameCookie);
       nextResponse.cookies.set('u_name', incomingUNameCookie, {
         httpOnly: false,
         sameSite: 'lax',
         secure: process.env.NODE_ENV === 'production',
         path: '/',
-        maxAge: 86400, // 24 hours - same as login
+        maxAge: 60 * 60, // 1 hour - align with access token expiration
       });
     } else {
-      console.log('⚠️ No u_name cookie found during refresh');
+      console.log('⚠️ No username info found during refresh');
     }
 
     const totalTime = Math.round(performance.now() - start);

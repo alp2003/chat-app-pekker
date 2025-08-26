@@ -91,7 +91,7 @@ export async function loginAction(data: {
         sameSite: 'lax',
         secure: process.env.NODE_ENV === 'production',
         path: '/',
-        maxAge: 300, // 5 minutes for testing to eliminate race conditions
+        maxAge: 60 * 60, // 1 hour for testing to eliminate race conditions
       });
     }
   }
@@ -110,7 +110,7 @@ export async function loginAction(data: {
       path: '/', 
       sameSite: 'lax' as const,
       secure: process.env.NODE_ENV === 'production',
-      maxAge: 86400 // 24 hours - same as other auth cookies
+      maxAge: 60 * 60 // 1 hour - align with access token expiration
     });
     console.log('✅ u_name cookie set with value:', username);
     

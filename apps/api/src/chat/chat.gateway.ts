@@ -204,4 +204,17 @@ export class ChatGateway
       });
     }
   }
+
+  @SubscribeMessage('ping')
+  onPing(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: any,
+  ): void {
+    // Respond with pong to confirm connection is alive
+    // This helps mobile clients detect stale connections
+    client.emit('pong', { 
+      timestamp: data?.timestamp || Date.now(),
+      serverId: client.id 
+    });
+  }
 }

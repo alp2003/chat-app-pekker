@@ -154,13 +154,20 @@ export class AuthService {
 
     if (!matched) throw new UnauthorizedException('invalid_refresh');
 
+    // Get user info for token generation
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, username: true },
+    });
+    if (!user) throw new UnauthorizedException('user_not_found');
+
     await this.prisma.session.update({
       where: { id: matched },
       data: { revokedAt: new Date() },
     });
 
     const tokenStart = Date.now();
-    const access = await this.signAccess({ id: userId, username: '' });
+    const access = await this.signAccess({ id: userId, username: user.username });
     const refresh = await this.signRefresh({ id: userId });
     const refreshHash = await argon2.hash(refresh, argonOpts);
     console.log(
@@ -182,7 +189,7 @@ export class AuthService {
     console.log('💾 Database session create', `(${Date.now() - dbStart}ms)`);
     console.log('✅ Total rotateRefresh time:', `(${Date.now() - start}ms)`);
 
-    return { access, refresh };
+    return { access, refresh, user };
   }
 
   async logout(userId: string, refresh: string) {

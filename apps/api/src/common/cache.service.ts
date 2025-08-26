@@ -5,10 +5,30 @@ import { createClient, RedisClientType } from 'redis';
 @Injectable()
 export class CacheService implements OnModuleInit, OnModuleDestroy {
   private client: RedisClientType | undefined;
-  private readonly defaultTtl = 300; // 5 minutes
   private invalidationQueue = new Map<string, NodeJS.Timeout>();
 
   constructor(private readonly configService: ConfigService) {}
+
+  // Get TTL values from configuration
+  private get defaultTtl(): number {
+    return this.configService.get<number>('app.cache.defaultTtl') ?? 900;
+  }
+
+  private get userTtl(): number {
+    return this.configService.get<number>('app.cache.userTtl') ?? 1800;
+  }
+
+  private get conversationsTtl(): number {
+    return this.configService.get<number>('app.cache.conversationsTtl') ?? 900;
+  }
+
+  private get messagesTtl(): number {
+    return this.configService.get<number>('app.cache.messagesTtl') ?? 600;
+  }
+
+  private get sessionTtl(): number {
+    return this.configService.get<number>('app.cache.sessionTtl') ?? 3300;
+  }
 
   async onModuleInit() {
     const redisUrl = this.configService.get<string>('app.redisUrl');
@@ -120,7 +140,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   async cacheUser(
     userId: string,
     userData: any,
-    ttl: number = 600,
+    ttl: number = this.userTtl, // 30 minutes - user data changes infrequently
   ): Promise<boolean> {
     return this.set(this.getUserCacheKey(userId), userData, ttl);
   }
@@ -136,7 +156,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   async cacheConversations(
     userId: string,
     conversations: any[],
-    ttl: number = 300,
+    ttl: number = this.conversationsTtl, // 15 minutes - conversations change moderately
   ): Promise<boolean> {
     return this.set(this.getConversationsCacheKey(userId), conversations, ttl);
   }
@@ -186,7 +206,7 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
     conversationId: string,
     messages: any[],
     page: number = 0,
-    ttl: number = 180,
+    ttl: number = this.messagesTtl, // 10 minutes - messages change frequently but need reasonable cache
   ): Promise<boolean> {
     return this.set(
       this.getMessagesCacheKey(conversationId, page),

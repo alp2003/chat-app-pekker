@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
         console.log('🍪 Setting non-httpOnly access token for Socket.io');
         // Set a non-httpOnly version for Socket.io (shorter name to avoid conflicts)
         nextResponse.cookies.set('u_token', accessToken, {
-          maxAge: 300, // 5 minutes for testing to eliminate race conditions
+          maxAge: 60 * 60, // 1 hour for testing to eliminate race conditions
           path: '/',
           sameSite: 'lax',
           secure: process.env.NODE_ENV === 'production',

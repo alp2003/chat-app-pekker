@@ -30,6 +30,13 @@ import { CacheInterceptor } from './common/cache/cache.interceptor';
         JWT_REFRESH_EXPIRES: Joi.string().default('30d'),
         JWT_ISSUER: Joi.string().optional(),
         JWT_AUDIENCE: Joi.string().optional(),
+        
+        // Cache TTL configuration (in seconds)
+        CACHE_DEFAULT_TTL: Joi.number().integer().min(60).default(900),
+        CACHE_USER_TTL: Joi.number().integer().min(60).default(1800),
+        CACHE_CONVERSATIONS_TTL: Joi.number().integer().min(60).default(900),
+        CACHE_MESSAGES_TTL: Joi.number().integer().min(60).default(600),
+        CACHE_SESSION_TTL: Joi.number().integer().min(60).default(3300),
       }),
       expandVariables: true,
       load: [appConfig],

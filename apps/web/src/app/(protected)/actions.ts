@@ -19,7 +19,7 @@ export async function refreshAction() {
       sameSite: 'lax',
       secure: process.env.NODE_ENV === 'production',
       path: '/',
-      maxAge: 300, // 5 minutes for testing to eliminate race conditions
+      maxAge: 60 * 60, // 1 hour for testing to eliminate race conditions
     });
     return true;
   }

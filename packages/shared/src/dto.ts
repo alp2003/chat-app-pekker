@@ -78,3 +78,24 @@ export const LoginDto = z.object({
 
 export type RegisterInput = z.infer<typeof RegisterDto>;
 export type LoginInput = z.infer<typeof LoginDto>;
+
+// Auth Response Types
+export const AuthUserDto = z.object({
+  id: z.string().uuid(),
+  username: z.string(),
+  displayName: z.string().optional(),
+});
+
+export const AuthSuccessResponseDto = z.object({
+  ok: z.literal(true),
+  user: AuthUserDto,
+});
+
+export const RefreshSuccessResponseDto = z.object({
+  ok: z.literal(true),
+  user: AuthUserDto.pick({ id: true, username: true }), // Refresh only returns id and username
+});
+
+export type AuthUserDto = z.infer<typeof AuthUserDto>;
+export type AuthSuccessResponseDto = z.infer<typeof AuthSuccessResponseDto>;
+export type RefreshSuccessResponseDto = z.infer<typeof RefreshSuccessResponseDto>;

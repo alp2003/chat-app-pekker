@@ -36,8 +36,8 @@ export class UsersService {
     }
 
     if (user) {
-      // Cache for 10 minutes
-      await this.cache.cacheUser(userId, user, 600);
+      // Cache with improved TTL strategy - 30 minutes for user data
+      await this.cache.cacheUser(userId, user);
     }
 
     return user;

@@ -38,6 +38,9 @@ interface ChatActions {
   // Internal methods (prefixed with _)
   _bootstrapData: () => Promise<void>;
   _loadRoomMessages: (roomId: string) => Promise<void>;
+  _syncRoomAfterReconnection: (roomId: string) => Promise<void>;
+  _syncAllRoomsAfterBackground: () => Promise<void>;
+  _refreshSocketListeners: () => void;
   _handleNewMessage: (message: Message) => void;
   _handleReactionUpdate: (data: {
     messageId: string;
@@ -107,65 +110,34 @@ const useChatStore = create<ChatStore>()(
 
         // Set up socket listeners
         if (socket) {
-          const {
-            _handleNewMessage,
-            _handleMessageAck,
-            _handleMessageNack,
-            _handleRoomHistory,
-            _handleReactionUpdate,
-            _handleConversationCreated,
-          } = get();
-
-          console.log('🟢 Setting up socket listeners');
-          console.log('🔍 Socket instance:', !!socket);
-          console.log('🔍 Socket connected:', socket.connected);
-          console.log('🔍 Socket ID:', socket.id);
-
-          // Add debugging listener for all events
-          socket.onAny((eventName: string, ...args: any[]) => {
-            console.log('🎧 Socket received event:', eventName, args);
-          });
-
-          socket.on('msg:new', (data: any) => {
-            console.log('🟢 Socket received msg:new event:', data);
-            _handleNewMessage(data);
-          });
-          socket.on('msg:ack', _handleMessageAck);
-          socket.on('msg:nack', _handleMessageNack);
-          socket.on('room:history', _handleRoomHistory);
-          socket.on('msg:react', _handleReactionUpdate);
-          socket.on('msg:react:ack', (data: any) => {
-            console.log('🎭 Reaction acknowledged:', data);
-          });
-          socket.on('msg:react:nack', (data: any) => {
-            console.error('🎭 Reaction failed:', data);
-          });
-          socket.on('conversation:created', (data: any) => {
-            console.log('🟢 === WebSocket Event Received ===');
-            console.log('🟢 Event type: conversation:created');
-            console.log('🟢 Socket connected:', socket.connected);
-            console.log('🟢 Socket id:', socket.id);
-            console.log('🟢 New conversation created event received:', data);
-            console.log(
-              '🔍 Event data details:',
-              JSON.stringify(data, null, 2)
-            );
-            _handleConversationCreated(data);
-          });
-
-          // Add connection debugging
-          socket.on('connect', () => {
-            console.log('🟢 Socket connected to:', socket.io.uri);
-            console.log('🟢 Socket namespace:', socket.nsp);
-            console.log('🟢 Socket id:', socket.id);
-          });
-          socket.on('disconnect', () => {
-            console.log('🔴 Socket disconnected');
+          get()._refreshSocketListeners();
+          
+          // Listen for reconnection events to refresh listeners
+          socket.on('client:reconnected', (data: any) => {
+            console.log('🔄 Socket reconnected - refreshing event listeners', data);
+            // Small delay to ensure socket is fully ready
+            setTimeout(() => {
+              console.log('🔄 Executing listener refresh after reconnection');
+              get()._refreshSocketListeners();
+              
+              // After reconnection, do WhatsApp-style bulk sync of all rooms
+              const currentRoomId = get().activeRoomId;
+              if (currentRoomId) {
+                console.log('🔄 WhatsApp-style: Starting bulk sync after reconnection');
+                get()._syncAllRoomsAfterBackground();
+              }
+            }, 50);
           });
           
-          // Add generic event listener for debugging
-          socket.onAny((eventName: string, ...args: any[]) => {
-            console.log('📡 WebSocket event received:', eventName, args);
+          // Listen for mobile background return events (critical for reaction sync)
+          socket.on('client:post-background', (data: any) => {
+            console.log('📱 Mobile background return detected - syncing reactions', data);
+            const currentRoomId = get().activeRoomId;
+            if (currentRoomId) {
+              console.log('🔄 Mobile: Starting reaction sync after background');
+              // Force immediate sync without delay for better mobile UX
+              get()._syncAllRoomsAfterBackground();
+            }
           });
         }
 
@@ -202,6 +174,8 @@ const useChatStore = create<ChatStore>()(
           socket.off('msg:react');
           socket.off('msg:react:ack');
           socket.off('msg:react:nack');
+          socket.off('client:reconnected');
+          socket.off('client:post-background');
           socket = null;
         }
       },
@@ -394,6 +368,59 @@ const useChatStore = create<ChatStore>()(
           }
         } catch (error) {
           console.error('Bootstrap failed:', error);
+        }
+      },
+
+      _syncAllRoomsAfterBackground: async () => {
+        console.log('🔄 WhatsApp-style: Syncing all rooms after background period');
+        const state = get();
+        
+        // Get all rooms that have been loaded (user has visited them)
+        const loadedRooms = Array.from(state.loadedRooms);
+        console.log('🔄 Syncing loaded rooms:', loadedRooms.length);
+        
+        // Sync all loaded rooms concurrently (like WhatsApp bulk sync)
+        const syncPromises = loadedRooms.map(roomId => 
+          state._syncRoomAfterReconnection(roomId)
+        );
+        
+        try {
+          await Promise.all(syncPromises);
+          console.log('✅ All rooms synced successfully after background');
+        } catch (error) {
+          console.error('❌ Error syncing rooms after background:', error);
+        }
+      },
+
+      _syncRoomAfterReconnection: async (roomId: string) => {
+        console.log('🔄 Syncing room after reconnection (bypassing cache):', roomId);
+        const state = get();
+        state._addLoadingRoom(roomId);
+
+        try {
+          const { listMessages } = await import('@/lib/api');
+
+          // Bypass cache by calling listMessages directly without trackRequest
+          console.log('📡 Fetching fresh messages from API for room:', roomId);
+          const freshMessages = await listMessages(roomId);
+
+          console.log('🔄 Updating room with fresh messages:', {
+            roomId,
+            oldCount: state.messagesByRoom[roomId]?.length || 0,
+            newCount: freshMessages.length,
+          });
+
+          state._setMessages(roomId, freshMessages);
+          state._addLoadedRoom(roomId);
+
+          // Update conversation previews
+          state._updateAllConversationPreviews();
+
+          console.log('✅ Room synced successfully after reconnection:', roomId);
+        } catch (error) {
+          console.error('❌ Failed to sync room after reconnection:', error);
+        } finally {
+          state._removeLoadingRoom(roomId);
         }
       },
 
@@ -602,6 +629,87 @@ const useChatStore = create<ChatStore>()(
         });
       },
 
+      _refreshSocketListeners: () => {
+        if (!socket) return;
+
+        console.log('🔄 Refreshing socket listeners');
+        console.log('🔍 Socket instance:', !!socket);
+        console.log('🔍 Socket connected:', socket.connected);
+        console.log('🔍 Socket ID:', socket.id);
+
+        const {
+          _handleNewMessage,
+          _handleMessageAck,
+          _handleMessageNack,
+          _handleRoomHistory,
+          _handleReactionUpdate,
+          _handleConversationCreated,
+        } = get();
+
+        // Remove existing listeners first to avoid duplicates
+        socket.off('msg:new');
+        socket.off('msg:ack');
+        socket.off('msg:nack');
+        socket.off('room:history');
+        socket.off('msg:react');
+        socket.off('msg:react:ack');
+        socket.off('msg:react:nack');
+        socket.off('conversation:created');
+        socket.off('connect');
+        socket.off('disconnect');
+
+        console.log('🟢 Setting up fresh socket listeners');
+
+        // Add debugging listener for all events
+        socket.onAny((eventName: string, ...args: any[]) => {
+          console.log('🎧 Socket received event:', eventName, args);
+        });
+
+        socket.on('msg:new', (data: any) => {
+          console.log('🟢 Socket received msg:new event:', data);
+          _handleNewMessage(data);
+        });
+        socket.on('msg:ack', _handleMessageAck);
+        socket.on('msg:nack', _handleMessageNack);
+        socket.on('room:history', _handleRoomHistory);
+        socket.on('msg:react', (data: any) => {
+          console.log('🎭 Socket received msg:react event:', data);
+          console.log('🔍 Current document visibility:', document.hidden ? 'HIDDEN' : 'VISIBLE');
+          console.log('🔍 Current active room:', get().activeRoomId);
+          _handleReactionUpdate(data);
+        });
+        socket.on('msg:react:ack', (data: any) => {
+          console.log('🎭 Reaction acknowledged:', data);
+        });
+        socket.on('msg:react:nack', (data: any) => {
+          console.error('🎭 Reaction failed:', data);
+        });
+        socket.on('conversation:created', (data: any) => {
+          console.log('🟢 === WebSocket Event Received ===');
+          console.log('🟢 Event type: conversation:created');
+          console.log('🟢 Socket connected:', socket.connected);
+          console.log('🟢 Socket id:', socket.id);
+          console.log('🟢 New conversation created event received:', data);
+          console.log(
+            '🔍 Event data details:',
+            JSON.stringify(data, null, 2)
+          );
+          _handleConversationCreated(data);
+        });
+
+        // Add connection debugging
+        socket.on('connect', () => {
+          console.log('🟢 Socket connected to:', socket.io.uri);
+          console.log('🟢 Socket namespace:', socket.nsp);
+          console.log('🟢 Socket id:', socket.id);
+        });
+        socket.on('disconnect', () => {
+          console.log('🔴 Socket disconnected');
+        });
+        
+        console.log('✅ Socket listeners refreshed successfully');
+      },
+
       _handleRoomHistory: (payload: { roomId: string; history: Message[] }) => {
         get()._setMessages(payload.roomId, payload.history);
         // Update conversation previews after loading room history
@@ -724,6 +832,8 @@ const useChatStore = create<ChatStore>()(
         reactions: Array<{ emoji: string; by: string[]; count: number }>;
       }) => {
         console.log('🎭 Handling reaction update:', data);
+        console.log('🔍 Document visible when handling:', !document.hidden);
+        console.log('🔍 Current timestamp:', new Date().toISOString());
         const state = get();
 
         // Find the message across all rooms and update its reactions

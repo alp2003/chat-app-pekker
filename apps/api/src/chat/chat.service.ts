@@ -225,8 +225,8 @@ export class ChatService {
       return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime();
     });
 
-    // Cache for 5 minutes
-    await this.cache.cacheConversations(userId, conversations, 300);
+    // Cache with improved TTL strategy - 15 minutes for conversations
+    await this.cache.cacheConversations(userId, conversations);
 
     return conversations;
   }
@@ -284,9 +284,9 @@ export class ChatService {
       }),
     );
 
-    // Cache for smaller result sets (3 minutes)
+    // Cache for smaller result sets (10 minutes - improved TTL strategy)
     if (take <= 5000) {
-      await this.cache.cacheMessages(roomId, transformedMessages, page, 180);
+      await this.cache.cacheMessages(roomId, transformedMessages, page);
     }
 
     return transformedMessages;

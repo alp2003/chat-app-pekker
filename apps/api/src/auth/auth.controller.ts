@@ -71,7 +71,7 @@ export class AuthController {
       httpOnly: true,
       sameSite: 'lax', // Use lax for broader compatibility  
       secure: false, // Keep false for HTTP development
-      maxAge: 1000 * 300, // 5 minutes for testing to eliminate race conditions
+      maxAge: 1000 * 60 * 60, // 1 hour for testing to eliminate race conditions
       path: '/',
     });
 
@@ -105,12 +105,14 @@ export class AuthController {
 
       console.log('✅ Refresh token valid for user:', userId);
 
-      const { access, refresh } = await this.auth.rotateRefresh(
+      const result = await this.auth.rotateRefresh(
         userId,
         token,
         req.headers['user-agent'] as string,
         req.ip,
       );
+
+      const { access, refresh, user } = result;
 
       console.log('🔄 New tokens generated, setting cookies...');
       
@@ -128,12 +130,18 @@ export class AuthController {
         httpOnly: true,
         sameSite: 'lax', // Use lax for broader compatibility
         secure: false, // Keep false for HTTP development
-        maxAge: 1000 * 300, // 5 minutes for testing to eliminate race conditions
+        maxAge: 1000 * 60 * 60, // 1 hour for testing to eliminate race conditions
         path: '/',
       });
 
       console.log('✅ Cookies set successfully');
-      return { ok: true };
+      return { 
+        ok: true,
+        user: {
+          id: user.id,
+          username: user.username,
+        }
+      };
     } catch (error) {
       console.log(
         '❌ Refresh token validation failed:',

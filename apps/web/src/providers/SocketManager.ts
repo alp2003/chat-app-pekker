@@ -42,6 +42,11 @@ export class SocketManager {
   private isRefreshingToken: boolean = false;
   private refreshRetryCount: number = 0;
   private maxRefreshRetries: number = 3;
+  
+  // Mobile background handling
+  private visibilityHandler: (() => void) | null = null;
+  private wasHidden: boolean = false;
+  private hiddenStartTime: number = 0;
 
   // Dev HMR singleton
   private static _singleton: Socket | null = null;
@@ -78,6 +83,7 @@ export class SocketManager {
 
     this.createSocket();
     this.startCookiePolling();
+    this.setupMobileBackgroundHandling();
 
     return this.socket!;
   }
@@ -405,6 +411,8 @@ export class SocketManager {
     this.refreshRetryCount = 0;
 
     console.log('🧹 Cleaning up socket listeners');
+    this.cleanupMobileBackgroundHandling();
+    
     if (process.env.NODE_ENV === 'production') {
       this.socket.disconnect();
     } else {
@@ -430,5 +438,71 @@ export class SocketManager {
     console.log('🔄 Manually triggering token refresh...');
     await this.handleTokenExpiration();
     return !this.isRefreshingToken && this.refreshRetryCount === 0;
+  }
+
+  // Mobile background handling methods
+  private setupMobileBackgroundHandling(): void {
+    if (typeof window === 'undefined') return;
+
+    this.visibilityHandler = () => this.handleVisibilityChange();
+    document.addEventListener('visibilitychange', this.visibilityHandler);
+    console.log('👁️ Mobile background handling enabled for reaction sync');
+  }
+
+  private handleVisibilityChange(): void {
+    if (typeof document === 'undefined') return;
+
+    const isHidden = document.hidden;
+    const now = Date.now();
+
+    if (isHidden) {
+      // Going to background
+      this.wasHidden = true;
+      this.hiddenStartTime = now;
+      console.log('👁️ App backgrounded - mobile Chrome detected');
+    } else if (this.wasHidden) {
+      // Coming back from background
+      const hiddenDuration = now - this.hiddenStartTime;
+      console.log(`👁️ App foregrounded after ${hiddenDuration}ms background`);
+      
+      // For any background period > 1 second, force reaction sync
+      if (hiddenDuration > 1000) {
+        console.log('🔄 Background period detected - forcing reaction sync');
+        this.handleBackgroundReturn();
+      }
+      
+      this.wasHidden = false;
+      this.hiddenStartTime = 0;
+    }
+  }
+
+  private handleBackgroundReturn(): void {
+    if (!this.socket) return;
+
+    // Emit a reconnection event to trigger room sync in chat store
+    console.log('🔄 Triggering post-background sync for reactions');
+    if (this.socket.connected) {
+      this.socket.emit('client:post-background', { 
+        timestamp: Date.now(),
+        trigger: 'mobile-background-return'
+      });
+    } else {
+      // If disconnected, reconnect first
+      this.socket.connect();
+      this.socket.once('connect', () => {
+        console.log('🔄 Reconnected after background, triggering sync');
+        this.socket?.emit('client:post-background', { 
+          timestamp: Date.now(),
+          trigger: 'mobile-reconnect'
+        });
+      });
+    }
+  }
+
+  private cleanupMobileBackgroundHandling(): void {
+    if (this.visibilityHandler) {
+      document.removeEventListener('visibilitychange', this.visibilityHandler);
+      this.visibilityHandler = null;
+    }
   }
 }
