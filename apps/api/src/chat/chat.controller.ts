@@ -159,36 +159,4 @@ export class ChatController {
 
     return { id: room.id };
   }
-
-  // Test endpoint to verify WebSocket is working
-  @Post('test-websocket')
-  async testWebSocket(@UserId() me: string) {
-    console.log('🧪 Testing WebSocket connection for user:', me);
-    
-    if (this.chatGateway?.server) {
-      const testData = {
-        message: 'Test WebSocket event',
-        userId: me,
-        timestamp: new Date().toISOString(),
-      };
-
-      console.log('📡 Emitting test WebSocket event:', testData);
-      this.chatGateway.server.emit('test:event', testData);
-      
-      const socketsCount = this.chatGateway.server?.sockets?.sockets?.size || 0;
-      console.log('🔍 Connected sockets count:', socketsCount);
-      
-      return { 
-        success: true, 
-        message: 'Test event emitted',
-        connectedSockets: socketsCount
-      };
-    } else {
-      console.log('❌ ChatGateway server not available');
-      return { 
-        success: false, 
-        message: 'WebSocket server not available' 
-      };
-    }
-  }
 }

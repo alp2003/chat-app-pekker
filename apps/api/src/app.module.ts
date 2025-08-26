@@ -13,6 +13,7 @@ import { RequestContextMiddleware } from './common/middleware/request-context.mi
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { CacheModule } from './common/cache/cache.module';
 import { CacheInterceptor } from './common/cache/cache.interceptor';
+import { DebugModule } from './debug/debug.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { CacheInterceptor } from './common/cache/cache.interceptor';
     ChatModule,
     UsersModule,
     CacheModule,
+    ...(process.env.NODE_ENV !== 'production' ? [DebugModule] : []),
   ],
   controllers: [HealthController],
   providers: [
