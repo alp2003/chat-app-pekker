@@ -155,7 +155,7 @@ export function TelegramThemePicker() {
                     </div>
                     <div className="flex justify-start">
                       <div className={`px-1.5 py-0.5 rounded text-[10px] max-w-[70%] ${getMessagePreviewClasses(themeName, false)}`}>
-                        It's morning in Tokyo 😄
+                        It&apos;s morning in Tokyo 😄
                       </div>
                     </div>
                   </div>

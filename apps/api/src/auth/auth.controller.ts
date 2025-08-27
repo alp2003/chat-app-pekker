@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Body, Post, Req, Res } from '@nestjs/common';
+import { Controller, Body, Post, Req, Res } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { ConfigService } from '@nestjs/config';
 import { ZodBody } from '../common/zod.pipe';
