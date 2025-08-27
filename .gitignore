@@ -71,3 +71,4 @@ docker-compose.override.yml
 *.tar
 *.gz
 *.orig
+jti-approch.md
